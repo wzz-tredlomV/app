@@ -1,0 +1,41 @@
+
+# Gradle
+
+.gradle/
+
+build/
+
+.gradle/
+
+**/build/
+
+.gradle-cache/
+
+
+
+# IDEA / Android Studio
+
+.idea/
+
+*.iml
+
+/.gradle
+
+/local.properties
+
+
+
+# Android
+
+captures/
+
+.externalNativeBuild/
+
+caches/
+
+
+
+# Gradle wrapper jar (OPTIONAL: keep if you want wrapper included)
+
+# gradle/wrapper/gradle-wrapper.jar
+
