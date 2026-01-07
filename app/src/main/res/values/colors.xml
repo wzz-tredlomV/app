@@ -1,10 +1,133 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Material Design 颜色 -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
     <color name="teal_200">#FF03DAC5</color>
     <color name="teal_700">#FF018786</color>
+    
+    <!-- 基础颜色 -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- 灰色调 -->
+    <color name="gray_50">#FFF5F5F5</color>
+    <color name="gray_100">#FFEEEEEE</color>
+    <color name="gray_200">#FFE0E0E0</color>
+    <color name="gray_300">#FFBDBDBD</color>
+    <color name="gray_400">#FF9E9E9E</color>
+    <color name="gray_500">#FF757575</color>
+    <color name="gray_600">#FF616161</color>
+    <color name="gray_700">#FF424242</color>
+    <color name="gray_800">#FF303030</color>
+    <color name="gray_900">#FF212121</color>
+    
+    <!-- 主题颜色 -->
+    <color name="primary">#FF6200EE</color>
+    <color name="primary_variant">#FF3700B3</color>
+    <color name="secondary">#FF03DAC5</color>
+    <color name="secondary_variant">#FF018786</color>
+    <color name="background">#FFF5F5F5</color>
+    <color name="surface">#FFFFFFFF</color>
+    <color name="error">#FFB00020</color>
+    
+    <!-- 文本颜色 -->
+    <color name="text_primary">#DE000000</color>
+    <color name="text_secondary">#8A000000</color>
+    <color name="text_hint">#61000000</color>
+    <color name="text_disabled">#1F000000</color>
+    <color name="text_primary_inverse">#FFFFFFFF</color>
+    <color name="text_secondary_inverse">#B3FFFFFF</color>
+    
+    <!-- 界面元素 -->
+    <color name="divider">#1F000000</color>
+    <color name="icon">#8A000000</color>
+    <color name="icon_inactive">#61000000</color>
+    <color name="icon_active">#FF6200EE</color>
+    
+    <!-- 状态颜色 -->
+    <color name="status_success">#FF4CAF50</color>
+    <color name="status_warning">#FFFF9800</color>
+    <color name="status_error">#FFF44336</color>
+    <color name="status_info">#FF2196F3</color>
+    
+    <!-- 二维码颜色 -->
+    <color name="qr_background">#FFFFFFFF</color>
+    <color name="qr_foreground">#FF000000</color>
+    <color name="qr_finder_pattern">#FF6200EE</color>
+    <color name="qr_alignment_pattern">#FF03DAC5</color>
+    <color name="qr_timing_pattern">#FFFF9800</color>
+    
+    <!-- 进度条颜色 -->
+    <color name="progress_background">#FFE0E0E0</color>
+    <color name="progress_primary">#FF6200EE</color>
+    <color name="progress_secondary">#FF03DAC5</color>
+    <color name="progress_success">#FF4CAF50</color>
+    <color name="progress_warning">#FFFF9800</color>
+    <color name="progress_error">#FFF44336</color>
+    
+    <!-- 按钮颜色 -->
+    <color name="button_primary">#FF6200EE</color>
+    <color name="button_primary_text">#FFFFFFFF</color>
+    <color name="button_secondary">#FF03DAC5</color>
+    <color name="button_secondary_text">#FF000000</color>
+    <color name="button_outline">#FFFFFFFF</color>
+    <color name="button_outline_text">#FF6200EE</color>
+    <color name="button_disabled">#FFE0E0E0</color>
+    <color name="button_disabled_text">#FF9E9E9E</color>
+    
+    <!-- 卡片颜色 -->
+    <color name="card_background">#FFFFFFFF</color>
+    <color name="card_elevated">#FFFFFFFF</color>
+    <color name="card_outline">#FFE0E0E0</color>
+    <color name="card_shadow">#1F000000</color>
+    
+    <!-- 输入框颜色 -->
+    <color name="input_background">#FFFFFFFF</color>
+    <color name="input_border">#FFBDBDBD</color>
+    <color name="input_border_focused">#FF6200EE</color>
+    <color name="input_border_error">#FFF44336</color>
+    <color name="input_hint">#FF9E9E9E</color>
+    <color name="input_text">#FF000000</color>
+    <color name="input_label">#FF757575</color>
+    
+    <!-- 列表项颜色 -->
+    <color name="list_item_background">#FFFFFFFF</color>
+    <color name="list_item_selected">#FFE0E0E0</color>
+    <color name="list_item_pressed">#FFEEEEEE</color>
+    <color name="list_divider">#FFE0E0E0</color>
+    
+    <!-- 状态栏和导航栏 -->
+    <color name="status_bar">#FF3700B3</color>
+    <color name="navigation_bar">#FF000000</color>
+    
+    <!-- 透明颜色 -->
+    <color name="transparent">#00000000</color>
+    <color name="semi_transparent_black">#80000000</color>
+    <color name="semi_transparent_white">#80FFFFFF</color>
+    
+    <!-- 渐变颜色 -->
+    <color name="gradient_start">#FF6200EE</color>
+    <color name="gradient_middle">#FF03DAC5</color>
+    <color name="gradient_end">#FF4CAF50</color>
+    
+    <!-- 阴影颜色 -->
+    <color name="shadow_light">#1A000000</color>
+    <color name="shadow_medium">#33000000</color>
+    <color name="shadow_dark">#4D000000</color>
+    
+    <!-- 二维码扫描器 -->
+    <color name="scanner_background">#B3000000</color>
+    <color name="scanner_frame">#FF03DAC5</color>
+    <color name="scanner_laser">#FFF44336</color>
+    <color name="scanner_corner">#FF4CAF50</color>
+    
+    <!-- 文件类型颜色 -->
+    <color name="file_type_image">#FFF44336</color>
+    <color name="file_type_video">#FF4CAF50</color>
+    <color name="file_type_audio">#FF2196F3</color>
+    <color name="file_type_document">#FFFF9800</color>
+    <color name="file_type_archive">#FF9C27B0</color>
+    <color name="file_type_other">#FF795548</color>
 </resources>
