@@ -1,0 +1,97 @@
+# 发布配置
+release:
+  # 版本控制
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+    build: ${{ github.run_number }}
+  
+  # 代码签名
+  signing:
+    storeFile: keystore.jks
+    storePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+    keyAlias: ${{ secrets.KEY_ALIAS }}
+    keyPassword: ${{ secrets.KEY_PASSWORD }}
+  
+  # 构建变体
+  variants:
+    - name: debug
+      suffix: "-debug"
+      minify: false
+      
+    - name: release
+      suffix: ""
+      minify: true
+  
+  # 发布渠道
+  channels:
+    - name: github
+      type: github-release
+      
+    - name: google-play
+      type: google-play
+      track: internal
+      
+    - name: firebase
+      type: firebase
+      groups: ["testers"]
+  
+  # 更新日志
+  changelog:
+    template: |
+      ## Version ${{ version.name }}
+      
+      ### 🚀 新功能
+      - 初始版本发布
+      - 支持二维码文件传输
+      - 支持大文件分块传输
+      - 数据压缩和纠错
+      
+      ### 🐛 Bug修复
+      - 初始版本，暂无已知问题
+      
+      ### 📦 技术改进
+      - 使用现代 Android 架构
+      - 集成 Room 数据库
+      - 支持 CameraX
+      
+      ### 🔧 依赖更新
+      - Kotlin 1.9.0
+      - Android Gradle Plugin 8.1.0
+      - 所有依赖更新到最新稳定版
+  
+  # 发布检查清单
+  checklist:
+    - name: 代码质量检查
+      items:
+        - 所有测试通过
+        - Lint 检查通过
+        - 无编译警告
+        - 代码覆盖率 > 80%
+    
+    - name: 功能测试
+      items:
+        - 发送文件功能正常
+        - 接收文件功能正常
+        - 二维码生成正常
+        - 二维码扫描正常
+        - 压缩功能正常
+        - 纠错功能正常
+        - 断点续传正常
+    
+    - name: 用户体验
+      items:
+        - 界面响应流畅
+        - 无内存泄漏
+        - 无ANR问题
+        - 权限请求正常
+        - 错误处理完善
+    
+    - name: 发布准备
+      items:
+        - 版本号更新
+        - 更新日志编写
+        - 截图准备
+        - 应用描述更新
+        - 隐私政策链接
