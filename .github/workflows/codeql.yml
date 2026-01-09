@@ -24,15 +24,32 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4  # 更新到 v4
 
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v2
+      uses: github/codeql-action/init@v3  # v2 → v3
       with:
         languages: ${{ matrix.language }}
 
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v2
+    # 添加手动构建步骤（使用与 android-build.yml 相同的配置）
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4  # 更新到 v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3  # 更新到 v3
+      
+    - name: Grant execute permission for gradlew
+      run: chmod +x ./gradlew
+      
+    - name: Build with Gradle (for CodeQL)
+      run: ./gradlew classes  # 只编译类文件，不打包
+
+    # 移除 Autobuild 步骤，因为我们已经手动构建了
+    # - name: Autobuild
+    #   uses: github/codeql-action/autobuild@v2
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      uses: github/codeql-action/analyze@v3  # v2 → v3
