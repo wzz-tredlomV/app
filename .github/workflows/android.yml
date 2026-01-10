@@ -20,6 +20,8 @@ jobs:
 
     runs-on: ubuntu-latest
 
+
+
     env:
 
       ANDROID_SDK_ROOT: /usr/local/android-sdk
@@ -80,9 +82,11 @@ jobs:
 
 
 
-        # The archive typically extracts to ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools
+        # Handle different possible archive layouts:
 
-        # Move that inner dir to "latest" safely.
+        # Layout A (nested): ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools
+
+        # Layout B (flat): ${ANDROID_SDK_ROOT}/cmdline-tools/{bin,lib,source.properties,...}
 
         if [ -d "${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools" ]; then
 
@@ -90,9 +94,31 @@ jobs:
 
           mv "${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools" "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
 
+        elif [ -d "${ANDROID_SDK_ROOT}/cmdline-tools" ] && [ -f "${ANDROID_SDK_ROOT}/cmdline-tools/bin/sdkmanager" ]; then
+
+          rm -rf "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
+
+          mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
+
+          # Move all current contents (bin, lib, NOTICE.txt, source.properties, ...) into latest
+
+          # Use a loop to avoid moving the newly created 'latest' directory into itself
+
+          for f in "${ANDROID_SDK_ROOT}/cmdline-tools"/*; do
+
+            if [ "$(basename "$f")" != "latest" ]; then
+
+              mv "$f" "${ANDROID_SDK_ROOT}/cmdline-tools/latest/" || true
+
+            fi
+
+          done
+
         else
 
-          echo "Expected ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools not found — listing contents:"
+          echo "Expected ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools or ${ANDROID_SDK_ROOT}/cmdline-tools with bin — listing contents:"
+
+          ls -la "${ANDROID_SDK_ROOT}" || true
 
           ls -la "${ANDROID_SDK_ROOT}/cmdline-tools" || true
 
