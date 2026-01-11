@@ -39,7 +39,7 @@ jobs:
           
     - name: 授予 gradlew 执行权限
       run: chmod +x ./gradlew
-      
+           gradle wrapper --gradle-version 8.5
     - name: 构建 Debug APK
       run: |
         ./gradlew assembleDebug
