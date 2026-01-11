@@ -24,6 +24,35 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         
+    - name: 检查并设置 Gradle Wrapper
+      run: |
+        if [ ! -f "./gradlew" ]; then
+          echo "未找到 gradlew 文件，自动下载 Gradle Wrapper..."
+          
+          # 查找项目中使用的 Gradle 版本
+          GRADLE_VERSION="8.0"  # 默认版本
+          if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
+            GRADLE_VERSION=$(grep -oP 'gradle-\K[^-]+' gradle/wrapper/gradle-wrapper.properties | head -1)
+            echo "从 gradle-wrapper.properties 检测到 Gradle 版本: $GRADLE_VERSION"
+          fi
+          
+          # 下载对应版本的 Gradle Wrapper
+          curl -L "https://github.com/gradle/gradle/releases/download/v${GRADLE_VERSION}/gradle-${GRADLE_VERSION}-bin.zip" -o gradle.zip
+          unzip -q gradle.zip
+          rm gradle.zip
+          
+          # 使用下载的 Gradle 生成 wrapper
+          ./gradle-${GRADLE_VERSION}/bin/gradle wrapper --gradle-version=${GRADLE_VERSION}
+          
+          # 清理临时文件
+          rm -rf gradle-${GRADLE_VERSION}
+          
+          echo "Gradle Wrapper 设置完成"
+        else
+          echo "已存在 gradlew 文件"
+          chmod +x ./gradlew
+        fi
+        
     - name: 设置 Android SDK
       uses: android-actions/setup-android@v3
       
@@ -37,10 +66,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
           
-    - name: 授予 gradlew 执行权限
-      run: |
-        gradle wrapper --gradle-version 8.5
-        chmod +x ./gradlew
     - name: 构建 Debug APK
       run: |
         ./gradlew assembleDebug
@@ -107,6 +132,35 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+        
+    - name: 检查并设置 Gradle Wrapper
+      run: |
+        if [ ! -f "./gradlew" ]; then
+          echo "未找到 gradlew 文件，自动下载 Gradle Wrapper..."
+          
+          # 查找项目中使用的 Gradle 版本
+          GRADLE_VERSION="8.0"  # 默认版本
+          if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
+            GRADLE_VERSION=$(grep -oP 'gradle-\K[^-]+' gradle/wrapper/gradle-wrapper.properties | head -1)
+            echo "从 gradle-wrapper.properties 检测到 Gradle 版本: $GRADLE_VERSION"
+          fi
+          
+          # 下载对应版本的 Gradle Wrapper
+          curl -L "https://github.com/gradle/gradle/releases/download/v${GRADLE_VERSION}/gradle-${GRADLE_VERSION}-bin.zip" -o gradle.zip
+          unzip -q gradle.zip
+          rm gradle.zip
+          
+          # 使用下载的 Gradle 生成 wrapper
+          ./gradle-${GRADLE_VERSION}/bin/gradle wrapper --gradle-version=${GRADLE_VERSION}
+          
+          # 清理临时文件
+          rm -rf gradle-${GRADLE_VERSION}
+          
+          echo "Gradle Wrapper 设置完成"
+        else
+          echo "已存在 gradlew 文件"
+          chmod +x ./gradlew
+        fi
         
     - name: 运行 Lint 检查
       run: |
