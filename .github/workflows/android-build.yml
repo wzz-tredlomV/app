@@ -1,11 +1,11 @@
-name: Android Build
+name: Build Android APK
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch: # 允许手动触发
 
 jobs:
   build:
@@ -13,76 +13,31 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Set up JDK 17
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
-        cache: 'gradle'
-    
+        
     - name: Setup Android SDK
-      uses: android-actions/setup-android@v2
+      uses: android-actions/setup-android@v3
       
     - name: Make gradlew executable
       run: chmod +x ./gradlew
       
-    - name: Setup Android Emulator for Testing (Optional)
-      if: false  # 设置为 true 如果需要运行测试
-      uses: reactivecircus/android-emulator-runner@v2
-      with:
-        api-level: 29
-        target: default
-        arch: x86_64
-        profile: Nexus 6
-        script: ./gradlew connectedCheck
-    
-    - name: Cache Gradle dependencies
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
-    
-    - name: Build with Gradle
+    - name: Build APK
       run: |
-        ./gradlew assembleDebug --no-daemon --stacktrace
-    
-    - name: Upload APK
-      uses: actions/upload-artifact@v3
+        ./gradlew assembleDebug
+        # 或者使用 assembleRelease 用于发布版本
+        # ./gradlew assembleRelease
+        
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: qr-file-transfer-apk
+        name: app-debug-apk
         path: app/build/outputs/apk/debug/app-debug.apk
+        # 如果是 release 版本：
+        # path: app/build/outputs/apk/release/app-release.apk
         retention-days: 7
-        
-    - name: Generate Build Report
-      run: |
-        echo "### 构建成功! 🎉" >> $GITHUB_STEP_SUMMARY
-        echo "**应用名称:** QR文件传输" >> $GITHUB_STEP_SUMMARY
-        echo "**版本:** 1.0.0" >> $GITHUB_STEP_SUMMARY
-        echo "**构建时间:** $(date)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**下载链接:**" >> $GITHUB_STEP_SUMMARY
-        echo "- [app-debug.apk](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**构建日志:**" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "构建完成" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        
-    - name: Notify on Success
-      if: success()
-      run: |
-        echo "✅ Android APK 构建成功!"
-        echo "📦 APK 文件已上传到工作流制品"
-        echo "🔗 下载链接: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        
-    - name: Notify on Failure
-      if: failure()
-      run: |
-        echo "❌ Android APK 构建失败!"
-        echo "请检查构建日志以获取详细信息"
