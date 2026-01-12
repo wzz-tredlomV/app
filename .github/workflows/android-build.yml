@@ -5,7 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -24,20 +24,52 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       
-    - name: Make gradlew executable
-      run: chmod +x ./gradlew
+    - name: Initialize Gradle Wrapper (if missing)
+      run: |
+        if [ ! -f "./gradlew" ]; then
+          echo "gradlew not found, initializing gradle wrapper..."
+          # 检查是否有gradle wrapper配置文件
+          if [ -d "./gradle/wrapper" ]; then
+            # 如果wrapper目录存在但gradlew文件缺失，尝试生成
+            gradle wrapper
+          else
+            # 如果都没有，创建基本的wrapper
+            gradle init --type basic
+            # 或者为Android项目初始化
+            # 你也可以直接下载gradlew
+            wget https://raw.githubusercontent.com/gradle/gradle/master/gradlew
+            chmod +x gradlew
+            mkdir -p gradle/wrapper
+            wget https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar -P gradle/wrapper/
+            wget https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.properties -P gradle/wrapper/
+          fi
+        fi
+        
+        # 确保gradlew可执行
+        if [ -f "./gradlew" ]; then
+          chmod +x ./gradlew
+        fi
       
     - name: Build APK
       run: |
-        ./gradlew assembleDebug
-        # 或者使用 assembleRelease 用于发布版本
-        # ./gradlew assembleRelease
+        # 使用gradlew或gradle
+        if [ -f "./gradlew" ]; then
+          ./gradlew assembleDebug --stacktrace
+        else
+          gradle assembleDebug --stacktrace
+        fi
+        
+    - name: Find and list APK files
+      run: |
+        echo "Searching for APK files..."
+        find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
         
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
-        # 如果是 release 版本：
-        # path: app/build/outputs/apk/release/app-release.apk
+        name: android-apk
+        path: |
+          **/*.apk
+          **/build/outputs/**/*.apk
+        if-no-files-found: warn
         retention-days: 7
