@@ -15,7 +15,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up JDK 17
+    - name: Set up JDK
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
@@ -24,276 +24,60 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       
-    - name: 检查项目结构
+    - name: 自动创建gradlew文件（仅当不存在时）
       run: |
-        echo "=== 项目文件 ==="
-        ls -la
-        echo ""
-        echo "=== Gradle wrapper目录 ==="
-        ls -la gradle/wrapper/ 2>/dev/null || echo "gradle/wrapper目录不存在，创建它..."
-        mkdir -p gradle/wrapper
-      
-    - name: 确保gradle-wrapper文件完整
-      run: |
-        echo "=== 检查并补全gradle wrapper文件 ==="
-        
-        # 1. 确保目录存在
-        mkdir -p gradle/wrapper
-        
-        # 2. 检查并下载gradle-wrapper.jar（最重要！）
-        if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-          echo "下载gradle-wrapper.jar..."
-          
-          # 先尝试从gradle-wrapper.properties中获取版本
-          GRADLE_VERSION="8.2.1"  # 默认版本
-          if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
-            echo "从gradle-wrapper.properties读取配置..."
-            cat gradle/wrapper/gradle-wrapper.properties
-            # 提取gradle版本
-            if grep -q "distributionUrl" gradle/wrapper/gradle-wrapper.properties; then
-              GRADLE_VERSION=$(grep "distributionUrl" gradle/wrapper/gradle-wrapper.properties | \
-                sed 's/.*gradle-\([0-9.]*\)-.*/\1/')
-              echo "检测到Gradle版本: $GRADLE_VERSION"
-            fi
-          fi
-          
-          # 下载对应版本的gradle-wrapper.jar
-          echo "下载Gradle $GRADLE_VERSION 的 wrapper jar..."
-          wget -q -O gradle/wrapper/gradle-wrapper.jar \
-            "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" || \
-          wget -q -O gradle/wrapper/gradle-wrapper.jar \
-            "https://repo.maven.apache.org/maven2/gradle/wrapper/gradle-wrapper/${GRADLE_VERSION}/gradle-wrapper-${GRADLE_VERSION}.jar" || \
-          echo "下载失败，尝试其他版本..."
-          
-          # 如果特定版本下载失败，使用通用版本
-          if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-            echo "下载通用gradle-wrapper.jar..."
-            wget -q -O gradle/wrapper/gradle-wrapper.jar \
-              "https://github.com/gradle/gradle/raw/master/gradle/wrapper/gradle-wrapper.jar" || \
-            wget -q -O gradle/wrapper/gradle-wrapper.jar \
-              "https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar"
-          fi
-          
-          # 验证文件
-          if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-            echo "gradle-wrapper.jar下载成功，大小: $(wc -c < gradle/wrapper/gradle-wrapper.jar) 字节"
-          else
-            echo "警告：gradle-wrapper.jar下载失败"
-          fi
-        else
-          echo "gradle-wrapper.jar已存在"
-        fi
-        
-        # 3. 确保gradle-wrapper.properties存在
-        if [ ! -f "gradle/wrapper/gradle-wrapper.properties" ]; then
-          echo "创建gradle-wrapper.properties..."
-          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
-distributionBase=GRADLE_USER_HOME
-distributionPath=wrapper/dists
-distributionUrl=https\://services.gradle.org/distributions/gradle-8.2.1-all.zip
-networkTimeout=10000
-validateDistributionUrl=true
-zipStoreBase=GRADLE_USER_HOME
-zipStorePath=wrapper/dists
-EOF
-        fi
-        
-        # 4. 创建或更新gradlew脚本
+        # 只检查gradlew文件是否存在，如果不存在就创建
         if [ ! -f "./gradlew" ]; then
-          echo "创建gradlew脚本..."
-          cat > gradlew << 'EOF'
-#!/usr/bin/env bash
-
-##############################################################################
-##
-##  Gradle start up script for UN*X
-##
-##############################################################################
-
-# Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
-
-# Use the maximum available, or set MAX_FD != -1 to use that value.
-MAX_FD="maximum"
-
-warn () {
-    echo "$*"
-}
-
-die () {
-    echo
-    echo "$*"
-    echo
-    exit 1
-}
-
-# OS specific support (must be 'true' or 'false').
-cygwin=false
-msys=false
-darwin=false
-nonstop=false
-case "$(uname)" in
-  CYGWIN* )
-    cygwin=true
-    ;;
-  Darwin* )
-    darwin=true
-    ;;
-  MINGW* )
-    msys=true
-    ;;
-  NONSTOP* )
-    nonstop=true
-    ;;
-esac
-
-# Determine the Java command to use to start the JVM.
-if [ -n "$JAVA_HOME" ] ; then
-    if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
-        # IBM's JDK on AIX uses strange locations for the executables
-        JAVACMD="$JAVA_HOME/jre/sh/java"
-    else
-        JAVACMD="$JAVA_HOME/bin/java"
-    fi
-    if [ ! -x "$JAVACMD" ] ; then
-        die "ERROR: JAVA_HOME is set to an invalid directory: $JAVA_HOME
-
-Please set the JAVA_HOME variable in your environment to match the
-location of your Java installation."
-    fi
-else
-    JAVACMD="java"
-    which java >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
-
-Please set the JAVA_HOME variable in your environment to match the
-location of your Java installation."
-fi
-
-# For Cygwin or MSYS, switch paths to Windows format before running java
-if [ "$cygwin" = "true" ] || [ "$msys" = "true" ] ; then
-    APP_HOME=$(cygpath --path --mixed "$APP_HOME")
-    CLASSPATH=$(cygpath --path --mixed "$CLASSPATH")
-    
-    JAVACMD=$(cygpath --unix "$JAVACMD")
-
-    # We build the pattern for arguments to be converted via cygpath
-    ROOTDIRSRAW=$(find / -maxdepth 1 -mindepth 1 -type d 2>/dev/null)
-    SEP=""
-    for dir in $ROOTDIRSRAW ; do
-        ROOTDIRS="$ROOTDIRS$SEP$dir"
-        SEP="|"
-    done
-    OURCYGPATTERN="(^($ROOTDIRS))"
-    # Add a user-defined pattern to the cygpath arguments
-    if [ "$GRADLE_CYGPATTERN" != "" ] ; then
-        OURCYGPATTERN="$OURCYGPATTERN|($GRADLE_CYGPATTERN)"
-    fi
-fi
-
-# Resolve links: $0 may be a link
-PRG="$0"
-# Need this for relative symlinks.
-while [ -h "$PRG" ] ; do
-    ls=$(ls -ld "$PRG")
-    link=$(expr "$ls" : '.*-> \(.*\)$')
-    if expr "$link" : '/.*' > /dev/null; then
-        PRG="$link"
-    else
-        PRG=$(dirname "$PRG")"/$link"
-    fi
-done
-SAVED="$(pwd)"
-cd "$(dirname "$PRG")" >/dev/null
-APP_HOME="$(pwd -P)"
-cd "$SAVED" >/dev/null
-
-CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
-
-# Collect all arguments for the java command, following the shell quoting and substitution rules
-eval set -- $DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS "\"-Dorg.gradle.appname=$APP_BASE_NAME\"" -classpath "\"$CLASSPATH\"" org.gradle.wrapper.GradleWrapperMain "$APP_ARGS"
-
-exec "$JAVACMD" "$@"
-EOF
+          echo "gradlew文件不存在，正在创建..."
+          
+          # 下载标准gradlew脚本
+          curl -s -o gradlew https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x gradlew
-          echo "gradlew创建成功"
+          
+          echo "gradlew文件创建完成"
         else
+          echo "gradlew文件已存在，跳过创建"
           chmod +x ./gradlew
-          echo "gradlew已存在，设置为可执行"
         fi
         
-        # 5. 验证所有文件
-        echo "=== 验证gradle wrapper文件 ==="
-        ls -la gradlew
-        ls -la gradle/wrapper/
+        # 确保gradle/wrapper目录存在
+        mkdir -p gradle/wrapper
         
-    - name: 配置Gradle属性
-      run: |
-        echo "=== 配置Gradle属性 ==="
-        # 创建gradle.properties文件解决常见问题
-        cat >> gradle.properties << 'EOF'
-# 解决Android项目常见问题
-android.useAndroidX=true
-android.enableJetifier=true
-org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-org.gradle.caching=true
-org.gradle.parallel=true
-org.gradle.configureondemand=true
-# 禁用daemon避免CI环境问题
-org.gradle.daemon=false
-EOF
-        
-        echo "gradle.properties内容:"
-        cat gradle.properties
-      
-    - name: 清理构建
-      run: |
-        echo "=== 清理项目 ==="
-        if [ -f "./gradlew" ]; then
-          ./gradlew clean || echo "清理步骤可能失败，继续构建..."
-        else
-          echo "错误：gradlew文件不存在"
-          exit 1
-        fi
-      
-    - name: 构建APK
-      run: |
-        echo "=== 开始构建APK ==="
-        if [ -f "./gradlew" ]; then
-          # 使用新创建的gradlew构建
-          ./gradlew assembleDebug \
-            --stacktrace \
-            --no-daemon \
-            --warning-mode=none \
-            --info
-        else
-          echo "错误：gradlew文件不存在"
-          exit 1
-        fi
-        
-    - name: 收集构建结果
-      run: |
-        echo "=== 构建结果 ==="
-        echo "APK文件列表:"
-        find . -name "*.apk" -type f 2>/dev/null | while read file; do
-          echo "- $file ($(ls -lh "$file" | awk '{print $5}'))"
-        done || echo "未找到APK文件"
-        
-        # 检查常见的APK路径
-        echo ""
-        echo "检查常见APK路径:"
-        for path in "app/build/outputs/apk/debug" "build/outputs/apk/debug" "outputs/apk/debug"; do
-          if [ -d "$path" ]; then
-            echo "目录 $path 存在"
-            ls -la "$path/" 2>/dev/null || true
+        # 如果gradle-wrapper.jar不存在，则下载
+        if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ] && [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
+          echo "gradle-wrapper.jar不存在，正在下载..."
+          
+          # 从gradle-wrapper.properties中读取gradle版本
+          if grep -q "distributionUrl" gradle/wrapper/gradle-wrapper.properties; then
+            GRADLE_VERSION=$(grep "distributionUrl" gradle/wrapper/gradle-wrapper.properties | \
+              sed -n 's/.*gradle-\([0-9.]*\)-.*/\1/p')
+            echo "使用Gradle版本: $GRADLE_VERSION"
+            
+            # 下载对应版本的gradle-wrapper.jar
+            curl -s -o gradle/wrapper/gradle-wrapper.jar \
+              "https://github.com/gradle/gradle/raw/v$GRADLE_VERSION/gradle/wrapper/gradle-wrapper.jar" || \
+            echo "下载指定版本失败，尝试最新版本..."
           fi
-        done
+          
+          # 如果还是失败，下载最新版本
+          if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+            curl -s -o gradle/wrapper/gradle-wrapper.jar \
+              https://github.com/gradle/gradle/raw/master/gradle/wrapper/gradle-wrapper.jar
+          fi
+          
+          if [ -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "gradle-wrapper.jar下载完成"
+          fi
+        fi
       
+    - name: 使用gradlew构建APK
+      run: |
+        echo "使用gradlew构建APK..."
+        ./gradlew assembleDebug
+        
     - name: 上传APK产物
       uses: actions/upload-artifact@v4
       with:
         name: android-apk
-        path: |
-          **/build/outputs/apk/**/*.apk
-          **/build/outputs/**/*.apk
-        if-no-files-found: warn
+        path: "**/build/outputs/apk/debug/*.apk"
         retention-days: 7
