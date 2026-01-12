@@ -283,7 +283,7 @@ EOF
         echo "检查常见APK路径:"
         for path in "app/build/outputs/apk/debug" "build/outputs/apk/debug" "outputs/apk/debug"; do
           if [ -d "$path" ]; then
-            echo "目录 $path 存在:"
+            echo "目录 $path 存在"
             ls -la "$path/" 2>/dev/null || true
           fi
         done
