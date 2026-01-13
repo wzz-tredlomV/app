@@ -5,6 +5,11 @@ pluginManagement {
         gradlePluginPortal()
         maven { url "https://jitpack.io" }
     }
+    plugins {
+        id 'com.android.application' version '8.1.0'
+        id 'org.jetbrains.kotlin.android' version '1.9.0'
+        id 'androidx.navigation.safeargs' version '2.7.0'
+    }
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
@@ -14,8 +19,6 @@ dependencyResolutionManagement {
         maven { url "https://jitpack.io" }
     }
 }
-
-enableFeaturePreview('STABLE_CONFIGURATION_CACHE')
 
 rootProject.name = "QRFileTransfer"
 include ":app"
