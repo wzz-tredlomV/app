@@ -3,6 +3,7 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
+        maven { url "https://jitpack.io" }
     }
 }
 dependencyResolutionManagement {
@@ -13,6 +14,8 @@ dependencyResolutionManagement {
         maven { url "https://jitpack.io" }
     }
 }
+
+enableFeaturePreview('STABLE_CONFIGURATION_CACHE')
 
 rootProject.name = "QRFileTransfer"
 include ":app"
