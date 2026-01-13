@@ -35,6 +35,7 @@ jobs:
     # 4. 确保 gradlew 有执行权限
     - name: Make gradlew executable
       run: |
+        gradle wrapper
         if [ -f gradlew ]; then
           chmod +x gradlew
         fi
