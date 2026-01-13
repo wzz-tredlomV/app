@@ -1,34 +1,59 @@
-name: Android Build
+name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup JDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-    
+    # 1. 检出代码
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    # 2. 设置 Gradle（官方 Action 会自动处理 wrapper 和缓存）
     - name: Setup Gradle
       uses: gradle/gradle-build-action@v2
       with:
         gradle-version: 8.5
-    
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew || true
-    
+        # 可选的：配置缓存
+        cache-disabled: false
+        cache-read-only: false
+        
+    # 3. 设置 Java（如果需要特定版本）
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'  # 或 'zulu', 'corretto', 'microsoft'
+        java-version: '17'  # Android 推荐 Java 17 或 11
+        
+    # 4. 确保 gradlew 有执行权限
+    - name: Make gradlew executable
+      run: |
+        if [ -f gradlew ]; then
+          chmod +x gradlew
+        fi
+        
+    # 5. 构建项目（Gradle Action 会自动缓存依赖）
     - name: Build with Gradle
       run: ./gradlew build
       
+    # 6. 生成 APK（可选）
     - name: Build APK
       run: ./gradlew assembleDebug
+      
+    # 7. 上传 APK 作为构建产物（可选）
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: app-debug-apk
+        path: |
+          **/build/outputs/apk/debug/*.apk
+          **/build/outputs/apk/release/*.apk
+        retention-days: 7
