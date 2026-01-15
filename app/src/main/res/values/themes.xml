@@ -83,7 +83,6 @@
         <item name="itemBackground">@android:color/transparent</item>
     </style>
 
-
     <!-- Transparent theme for splash screen -->
     <style name="Theme.QRFileTransfer.Splash" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
