@@ -43,7 +43,7 @@
     </style>
 
     <!-- Action bar style -->
-    <style name="Widget.QRFileTransfer.ActionBar" parent="Widget.Material3.ActionBar">
+    <style name="Widget.QRFileTransfer.ActionBar" parent="Widget.Material3.Toolbar">
         <item name="background">@color/primary</item>
         <item name="titleTextColor">@color/white</item>
         <item name="subtitleTextColor">@color/white</item>
@@ -78,8 +78,8 @@
 
     <!-- Bottom navigation style -->
     <style name="Widget.QRFileTransfer.BottomNavigation" parent="Widget.Material3.BottomNavigationView">
-        <item name="itemIconTint">@color/bottom_navigation_tint</item>
-        <item name="itemTextColor">@color/bottom_navigation_tint</item>
+        <item name="itemIconTint">@drawable/bottom_navigation_tint</item>
+        <item name="itemTextColor">@drawable/bottom_navigation_tint</item>
         <item name="itemBackground">@android:color/transparent</item>
     </style>
 
