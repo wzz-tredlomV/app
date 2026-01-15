@@ -83,11 +83,6 @@
         <item name="itemBackground">@android:color/transparent</item>
     </style>
 
-    <!-- Color state list for bottom navigation -->
-    <selector xmlns:android="http://schemas.android.com/apk/res/android" name="bottom_navigation_tint">
-        <item android:state_checked="true" android:color="@color/primary" />
-        <item android:state_checked="false" android:color="@color/gray_500" />
-    </selector>
 
     <!-- Transparent theme for splash screen -->
     <style name="Theme.QRFileTransfer.Splash" parent="Theme.AppCompat.Light.NoActionBar">
