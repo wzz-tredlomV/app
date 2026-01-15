@@ -40,9 +40,7 @@ jobs:
           chmod +x gradlew
         fi
     - name: 强制刷新并打印解析详情
-      run: ./gradlew --refresh-dependencies --no-daemon --info \
-  :app:dependencies --configuration debugCompileClasspath \
-  | grep -E '(jitpack|filepicker|FAILED|repository)' -i
+      run: ./gradlew --refresh-dependencies --no-daemon --info :app:dependencies --configuration debugCompileClasspath | grep -E '(jitpack|filepicker|FAILED|repository)' -i
     # 5. 构建项目（Gradle Action 会自动缓存依赖）
     - name: Build with Gradle
       run: ./gradlew build
