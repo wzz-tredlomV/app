@@ -127,7 +127,7 @@ dependencies {
     implementation 'com.guolindev.permissionx:permissionx:1.7.1'
     
     // 文件选择器
-    implementation 'com.github.DroidNinja:Android-FilePicker:2.2.5'
+    implementation 'com.github.DroidNinja:Android-FilePicker:5b55395d6c'
     
     // 圆形图片
     implementation 'de.hdodenhof:circleimageview:3.1.0'
