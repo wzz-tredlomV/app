@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/white"/>
+    <foreground>
+        <vector android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+            <!-- QR 网格 -->
+            <group android:scaleX="0.45" android:scaleY="0.45" android:pivotX="54" android:pivotY="54">
+                <path android:fillColor="#6200EE"
+                      android:pathData="M20,20h4v4h-4z M28,20h4v4h-4z M36,20h4v4h-4z M44,20h4v4h-4z M52,20h4v4h-4z M60,20h4v4h-4z M68,20h4v4h-4z M76,20h4v4h-4z M20,28h4v4h-4z M44,28h4v4h-4z M52,28h4v4h-4z M76,28h4v4h-4z M20,36h4v4h-4z M28,36h4v4h-4z M36,36h4v4h-4z M44,36h4v4h-4z M52,36h4v4h-4z M60,36h4v4h-4z M68,36h4v4h-4z M76,36h4v4h-4z M20,44h4v4h-4z M44,44h4v4h-4z M52,44h4v4h-4z M76,44h4v4h-4z M20,52h4v4h-4z M28,52h4v4h-4z M36,52h4v4h-4z M44,52h4v4h-4z M52,52h4v4h-4z M60,52h4v4h-4z M68,52h4v4h-4z M76,52h4v4h-4z M20,60h4v4h-4z M44,60h4v4h-4z M52,60h4v4h-4z M76,60h4v4h-4z M20,68h4v4h-4z M28,68h4v4h-4z M36,68h4v4h-4z M44,68h4v4h-4z M52,68h4v4h-4z M60,68h4v4h-4z M68,68h4v4h-4z M76,68h4v4h-4z M20,76h4v4h-4z M44,76h4v4h-4z M52,76h4v4h-4z M76,76h4v4h-4z"/>
+                <!-- 传输箭头 -->
+                <path android:fillColor="#03DAC5"
+                      android:pathData="M64,50l8,8l-8,8v-6h-12v-4h12z"/>
+            </group>
+        </vector>
+    </foreground>
+</adaptive-icon>
