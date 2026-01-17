@@ -1,3 +1,5 @@
+import kotlin.math.log
+import kotlin.math.min
 package com.qrfiletransfer.receiver
 
 import com.qrfiletransfer.sender.ErrorCorrection

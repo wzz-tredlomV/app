@@ -1,3 +1,5 @@
+import kotlin.math.ceil
+import kotlin.math.minOf
 package com.qrfiletransfer.sender
 
 import android.content.Context

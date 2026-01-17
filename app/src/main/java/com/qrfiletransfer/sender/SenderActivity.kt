@@ -1,3 +1,4 @@
+import java.util.Date
 package com.qrfiletransfer.sender
 
 import android.Manifest
