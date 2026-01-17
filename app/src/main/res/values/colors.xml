@@ -131,3 +131,5 @@
     <color name="file_type_archive">#FF9C27B0</color>
     <color name="file_type_other">#FF795548</color>
 </resources>
+    <!-- Launcher icon background -->
+    <color name="ic_launcher_background">#FF6200EE</color>
