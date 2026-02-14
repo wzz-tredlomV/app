@@ -76,15 +76,15 @@ class ArchiveManager(
     private fun extractZip(src: File, targetDir: DocumentFile) {
         FileInputStream(src).use { fis ->
             val zis = ZipArchiveInputStream(BufferedInputStream(fis))
-            var entry: ArchiveEntry? = zis.nextEntry
-            while (entry != null) {
-                val name = entry.name
-                if (entry.isDirectory) {
+            var currentEntry: ArchiveEntry? = zis.nextEntry
+            while (currentEntry != null) {
+                val name = currentEntry.name
+                if (currentEntry.isDirectory) {
                     createDocumentDirTree(targetDir, name)
                 } else {
-                    callback?.onFileStart(name, entry.size)
+                    callback?.onFileStart(name, currentEntry.size)
                     // 若 entry 大文件则提交线程写入临时文件再copy
-                    if (entry.size > largeFileThreshold) {
+                    if (currentEntry.size > largeFileThreshold) {
                         val tmpOut = File.createTempFile("big_entry", null, cacheDir)
                         val transferred = writeEntryToTemp(zis, tmpOut, name)
                         // 提交任务把 tmpOut 写回目标 SAF
@@ -111,14 +111,14 @@ class ArchiveManager(
                                 while (zis.read(buffer).also { read = it } > 0) {
                                     out.write(buffer, 0, read)
                                     readTotal += read
-                                    callback?.onFileProgress(name, readTotal, entry.size)
+                                    callback?.onFileProgress(name, readTotal, currentEntry.size)
                                 }
                                 callback?.onFileComplete(name)
                             } else throw IOException("无法打开输出流")
                         }
                     }
                 }
-                entry = zis.nextEntry
+                currentEntry = zis.nextEntry
             }
         }
     }
@@ -138,8 +138,7 @@ class ArchiveManager(
     }
 
     private fun extract7z(src: File, targetDir: DocumentFile) {
-        RandomAccessFile(src, "r").use { raf ->
-            val seven = SevenZFile(raf)
+        SevenZFile(src).use { seven ->
             var entry = seven.nextEntry
             val buffer = ByteArray(8192)
             while (entry != null) {
@@ -158,7 +157,7 @@ class ArchiveManager(
                                 if (r <= 0) break
                                 fos.write(buffer, 0, r)
                                 callback?.onFileProgress(name, (entry.size - left + r), entry.size)
-                                left -= r
+                                left -= r.toLong()
                             }
                         }
                         executor.submit {
@@ -182,8 +181,8 @@ class ArchiveManager(
                                     val r = seven.read(buffer, 0, toRead)
                                     if (r <= 0) break
                                     out.write(buffer, 0, r)
-                                    readTotal += r
-                                    left -= r
+                                    readTotal += r.toLong()
+                                    left -= r.toLong()
                                     callback?.onFileProgress(name, readTotal, entry.size)
                                 }
                                 callback?.onFileComplete(name)
@@ -236,13 +235,13 @@ class ArchiveManager(
     }
 
     private fun extractFromArchiveInputStream(tar: ArchiveInputStream, targetDir: DocumentFile) {
-        var entry: ArchiveEntry? = tar.nextEntry
-        while (entry != null) {
-            val name = entry.name
-            if (entry.isDirectory) {
+        var currentEntry: ArchiveEntry? = tar.nextEntry
+        while (currentEntry != null) {
+            val name = currentEntry.name
+            if (currentEntry.isDirectory) {
                 createDocumentDirTree(targetDir, name)
             } else {
-                val entrySize = if (entry is TarArchiveEntry) entry.size else null
+                val entrySize = if (currentEntry is TarArchiveEntry) currentEntry.size else null
                 callback?.onFileStart(name, entrySize)
                 if (entrySize != null && entrySize > largeFileThreshold) {
                     val tmpOut = File.createTempFile("big_tar", null, cacheDir)
@@ -283,7 +282,7 @@ class ArchiveManager(
                     }
                 }
             }
-            entry = tar.nextEntry
+            currentEntry = tar.nextEntry
         }
     }
 
@@ -579,3 +578,4 @@ class ArchiveManager(
         return cur.createFile("application/octet-stream", filename)
     }
 }
+
