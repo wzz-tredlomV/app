@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<camera2Configuration
-    xmlns:camera="http://schemas.android.com/apk/res-auto">
-    <camera:camera2SessionConfig>
-        <camera:templateType>PREVIEW</camera:templateType>
-    </camera:camera2SessionConfig>
-</camera2Configuration>
