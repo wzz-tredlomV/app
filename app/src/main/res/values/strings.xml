@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Unarchiver</string>
+    <string name="no_file_selected">未选择文件/文件夹</string>
+    <string name="select_files">选择文件/文件夹</string>
+    <string name="no_destination_selected">未选择输出目录</string>
+    <string name="select_destination">选择输出目录</string>
+    <string name="output_filename">输出文件名（不带后缀）</string>
+    <string name="compress">压缩</string>
+    <string name="extract">解压</string>
+</resources>

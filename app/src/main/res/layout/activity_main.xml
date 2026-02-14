@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="com.example.unarchiver.MainActivity">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/topAppBar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:backgroundTint="?attr/colorPrimary"
+        android:title="@string/app_name" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="?attr/actionBarSize"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:id="@+id/tv_selected_files"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/no_file_selected" />
+
+            <Button
+                android:id="@+id/btn_pick_files"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/select_files" />
+
+            <TextView
+                android:id="@+id/tv_selected_dest"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/no_destination_selected" />
+
+            <Button
+                android:id="@+id/btn_pick_dest"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/select_destination" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="12dp">
+
+                <Spinner
+                    android:id="@+id/spinner_format"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content" />
+
+                <EditText
+                    android:id="@+id/et_output_name"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/output_filename" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_compress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/compress"
+                android:enabled="false"
+                android:layout_marginTop="12dp"/>
+
+            <Button
+                android:id="@+id/btn_extract"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/extract"
+                android:enabled="false"
+                android:layout_marginTop="8dp" />
+
+            <ProgressBar
+                android:id="@+id/progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:visibility="gone"/>
+
+            <TextView
+                android:id="@+id/tv_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="" />
+
+            <TextView
+                android:id="@+id/tv_current_file"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
