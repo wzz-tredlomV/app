@@ -78,19 +78,22 @@ class ArchiveManager(
             val zis = ZipArchiveInputStream(BufferedInputStream(fis))
             var currentEntry: ArchiveEntry? = zis.nextEntry
             while (currentEntry != null) {
-                val name = currentEntry.name
-                if (currentEntry.isDirectory) {
-                    createDocumentDirTree(targetDir, name)
+                val entryName = currentEntry.name
+                val entrySize = currentEntry.size
+                val isDirectory = currentEntry.isDirectory
+                
+                if (isDirectory) {
+                    createDocumentDirTree(targetDir, entryName)
                 } else {
-                    callback?.onFileStart(name, currentEntry.size)
+                    callback?.onFileStart(entryName, entrySize)
                     // 若 entry 大文件则提交线程写入临时文件再copy
-                    if (currentEntry.size > largeFileThreshold) {
+                    if (entrySize > largeFileThreshold) {
                         val tmpOut = File.createTempFile("big_entry", null, cacheDir)
-                        val transferred = writeEntryToTemp(zis, tmpOut, name)
+                        val transferred = writeEntryToTemp(zis, tmpOut, entryName)
                         // 提交任务把 tmpOut 写回目标 SAF
                         executor.submit {
-                            val fileDoc = createDocumentFileForPath(targetDir, name)
-                                ?: throw IOException("创建目标文件失败: $name")
+                            val fileDoc = createDocumentFileForPath(targetDir, entryName)
+                                ?: throw IOException("创建目标文件失败: $entryName")
                             tmpOut.inputStream().use { fis2 ->
                                 contentResolver.openOutputStream(fileDoc.uri).use { out ->
                                     if (out != null) {
@@ -99,21 +102,23 @@ class ArchiveManager(
                                 }
                             }
                             tmpOut.delete()
-                            callback?.onFileComplete(name)
+                            callback?.onFileComplete(entryName)
                         }
                     } else {
-                        val fileDoc = createDocumentFileForPath(targetDir, name) ?: throw IOException("创建目标文件失败: $name")
+                        val fileDoc = createDocumentFileForPath(targetDir, entryName) ?: throw IOException("创建目标文件失败: $entryName")
                         contentResolver.openOutputStream(fileDoc.uri).use { out ->
                             if (out != null) {
                                 val buffer = ByteArray(8192)
                                 var readTotal = 0L
                                 var read: Int
-                                while (zis.read(buffer).also { read = it } > 0) {
+                                while (true) {
+                                    read = zis.read(buffer)
+                                    if (read <= 0) break
                                     out.write(buffer, 0, read)
                                     readTotal += read
-                                    callback?.onFileProgress(name, readTotal, currentEntry.size)
+                                    callback?.onFileProgress(entryName, readTotal, entrySize)
                                 }
-                                callback?.onFileComplete(name)
+                                callback?.onFileComplete(entryName)
                             } else throw IOException("无法打开输出流")
                         }
                     }
@@ -128,7 +133,9 @@ class ArchiveManager(
             val buffer = ByteArray(64 * 1024)
             var total = 0L
             var r: Int
-            while (zis.read(buffer).also { r = it } > 0) {
+            while (true) {
+                r = zis.read(buffer)
+                if (r <= 0) break
                 out.write(buffer, 0, r)
                 total += r
                 callback?.onFileProgress(entryName, total, null)
@@ -143,20 +150,23 @@ class ArchiveManager(
             val buffer = ByteArray(8192)
             while (entry != null) {
                 val name = entry.name
-                if (entry.isDirectory) {
+                val isDirectory = entry.isDirectory
+                val size = entry.size
+                
+                if (isDirectory) {
                     createDocumentDirTree(targetDir, name)
                 } else {
-                    callback?.onFileStart(name, entry.size)
-                    if (entry.size > largeFileThreshold) {
+                    callback?.onFileStart(name, size)
+                    if (size > largeFileThreshold) {
                         val tmpOut = File.createTempFile("big_7z", null, cacheDir)
                         FileOutputStream(tmpOut).use { fos ->
-                            var left = entry.size
+                            var left = size
                             while (left > 0) {
                                 val toRead = min(buffer.size.toLong(), left).toInt()
                                 val r = seven.read(buffer, 0, toRead)
                                 if (r <= 0) break
                                 fos.write(buffer, 0, r)
-                                callback?.onFileProgress(name, (entry.size - left + r), entry.size)
+                                callback?.onFileProgress(name, (size - left + r), size)
                                 left -= r.toLong()
                             }
                         }
@@ -174,7 +184,7 @@ class ArchiveManager(
                         val fileDoc = createDocumentFileForPath(targetDir, name) ?: throw IOException("创建目标文件失败: $name")
                         contentResolver.openOutputStream(fileDoc.uri).use { out ->
                             if (out != null) {
-                                var left = entry.size
+                                var left = size
                                 var readTotal = 0L
                                 while (left > 0) {
                                     val toRead = min(buffer.size.toLong(), left).toInt()
@@ -183,7 +193,7 @@ class ArchiveManager(
                                     out.write(buffer, 0, r)
                                     readTotal += r.toLong()
                                     left -= r.toLong()
-                                    callback?.onFileProgress(name, readTotal, entry.size)
+                                    callback?.onFileProgress(name, readTotal, size)
                                 }
                                 callback?.onFileComplete(name)
                             } else throw IOException("无法打开输出流")
@@ -223,7 +233,9 @@ class ArchiveManager(
                     val buffer = ByteArray(8192)
                     var readTotal = 0L
                     var read: Int
-                    while (cis.read(buffer).also { read = it } > 0) {
+                    while (true) {
+                        read = cis.read(buffer)
+                        if (read <= 0) break
                         out.write(buffer, 0, read)
                         readTotal += read
                         callback?.onFileProgress(simpleName, readTotal, null)
@@ -234,11 +246,13 @@ class ArchiveManager(
         }
     }
 
-    private fun extractFromArchiveInputStream(tar: ArchiveInputStream, targetDir: DocumentFile) {
+    private fun extractFromArchiveInputStream(tar: ArchiveInputStream<out ArchiveEntry>, targetDir: DocumentFile) {
         var currentEntry: ArchiveEntry? = tar.nextEntry
         while (currentEntry != null) {
             val name = currentEntry.name
-            if (currentEntry.isDirectory) {
+            val isDirectory = currentEntry.isDirectory
+            
+            if (isDirectory) {
                 createDocumentDirTree(targetDir, name)
             } else {
                 val entrySize = if (currentEntry is TarArchiveEntry) currentEntry.size else null
@@ -249,7 +263,9 @@ class ArchiveManager(
                         val buffer = ByteArray(64 * 1024)
                         var total = 0L
                         var r: Int
-                        while (tar.read(buffer).also { r = it } > 0) {
+                        while (true) {
+                            r = tar.read(buffer)
+                            if (r <= 0) break
                             out.write(buffer, 0, r)
                             total += r
                             callback?.onFileProgress(name, total, entrySize)
@@ -272,7 +288,9 @@ class ArchiveManager(
                             val buffer = ByteArray(8192)
                             var readTotal = 0L
                             var read: Int
-                            while (tar.read(buffer).also { read = it } > 0) {
+                            while (true) {
+                                read = tar.read(buffer)
+                                if (read <= 0) break
                                 out.write(buffer, 0, read)
                                 readTotal += read
                                 callback?.onFileProgress(name, readTotal, entrySize)
@@ -344,7 +362,9 @@ class ArchiveManager(
                             val buffer = ByteArray(64 * 1024)
                             var written = 0L
                             var r: Int
-                            while (input.read(buffer).also { r = it } > 0) {
+                            while (true) {
+                                r = input.read(buffer)
+                                if (r <= 0) break
                                 zos.write(buffer, 0, r)
                                 written += r
                                 callback?.onFileProgress(name, written, null)
@@ -377,7 +397,9 @@ class ArchiveManager(
             val buffer = ByteArray(64 * 1024)
             var written = 0L
             var r: Int
-            while (input.read(buffer).also { r = it } > 0) {
+            while (true) {
+                r = input.read(buffer)
+                if (r <= 0) break
                 zos.write(buffer, 0, r)
                 written += r
                 callback?.onFileProgress(entryPath, written, null)
