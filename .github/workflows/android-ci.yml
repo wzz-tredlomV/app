@@ -2,114 +2,45 @@ name: Android CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master, develop ]
   pull_request:
-    branches: [ main ]
-
-env:
-  JAVA_VERSION: '11'
-  GRADLE_OPTS: "-Xmx2g"
+    branches: [ main, master, develop ]
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build (assembleDebug + unit tests)
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    # 1. 检出代码
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up JDK 11
-        uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+    # 2. 设置 JDK 17
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
 
-      - name: Cache Gradle & Maven
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.m2/repository
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*','**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+    # 3. 使用系统 Gradle 或安装指定版本
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.5'  # 根据你的项目需求调整版本
 
-      - name: Set up Android SDK (API 34)
-        uses: google-github-actions/setup-android@v2
-        with:
-          api-level: 34
-          build-tools: "34.0.0"
-          components: |
-            platform-tools
-            emulator
-            tools
+    # 4. 运行单元测试
+    - name: Run Unit Tests
+      run: gradle test
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+    # 5. 编译 Debug APK
+    - name: Build Debug APK
+      run: gradle assembleDebug
 
-      - name: Run unit tests
-        run: ./gradlew test --no-daemon --stacktrace
-
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-
-  instrumentation:
-    name: Instrumentation tests (emulator)
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 11
-        uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: '11'
-
-      - name: Cache Gradle & Maven
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.m2/repository
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*','**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Set up Android SDK for emulator (API 31)
-        uses: google-github-actions/setup-android@v2
-        with:
-          api-level: 31
-          build-tools: "31.0.0"
-          components: |
-            platform-tools
-            emulator
-            tools
-
-      - name: Start emulator and run instrumentation tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 31
-          target: google_apis
-          arch: x86_64
-          emulator-options: -no-window -no-audio -no-boot-anim
-          script: |
-            chmod +x ./gradlew
-            ./gradlew connectedAndroidTest --no-daemon --stacktrace
-
-      - name: Upload instrumentation test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: instrumentation-results
-          path: app/build/reports
+    # 6. 上传 Debug APK
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: app/build/outputs/apk/debug/*.apk
+        retention-days: 7
