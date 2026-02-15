@@ -1,1371 +1,1525 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+# create_complete_project.sh - 创建完整的优化版Android 3D查看器项目
 
-ROOT="unarchiver-app"
-ZIP_NAME="${ROOT}.zip"
-LARGE_FILE_THRESHOLD=$((5 * 1024 * 1024)) # 5 MB, 超过这个大小时启用线程池并行处理
+set -e  # 遇到错误立即退出
 
-echo "创建 Android 项目骨架到 ./$ROOT ..."
-echo "大文件阈值: ${LARGE_FILE_THRESHOLD} bytes"
+PROJECT_NAME="Model3DViewer"
+PACKAGE_NAME="com.example.model3dviewer"
+BASE_DIR="$PWD/$PROJECT_NAME"
+APP_DIR="$BASE_DIR/app"
 
-# 清理旧目录
-rm -rf "$ROOT" "$ZIP_NAME"
+echo "🚀 开始创建 Android 3D Viewer 项目..."
 
-# 目录
-mkdir -p "$ROOT/app/src/main/java/com/example/unarchiver"
-mkdir -p "$ROOT/app/src/main/res/layout"
-mkdir -p "$ROOT/app/src/main/res/values"
-mkdir -p "$ROOT/app/src/main/res/mipmap-mdpi"
-mkdir -p "$ROOT/app/src/main/res/mipmap-hdpi"
-mkdir -p "$ROOT/app/src/main/res/mipmap-xhdpi"
-mkdir -p "$ROOT/app/src/main/res/mipmap-xxhdpi"
-mkdir -p "$ROOT/app/src/main/res/mipmap-xxxhdpi"
-mkdir -p "$ROOT/app/src/main/assets"
+# 创建完整目录结构
+echo "📁 创建目录结构..."
+mkdir -p "$APP_DIR"/src/main/{java/com/example/model3dviewer/{renderer,model,ui,adapter,utils},res/{layout,values,raw,drawable,mipmap-hdpi,mipmap-mdpi,mipmap-xhdpi,mipmap-xxhdpi,mipmap-xxxhdpi,menu},assets/environments}
+mkdir -p "$APP_DIR"/src/test/java/com/example/model3dviewer
+mkdir -p "$BASE_DIR"/gradle/wrapper
+mkdir -p "$BASE_DIR"/.idea
 
-# 测试目录
-mkdir -p "$ROOT/app/src/test/java/com/example/unarchiver"
-mkdir -p "$ROOT/app/src/androidTest/java/com/example/unarchiver"
+# ============ 根目录文件 ============
 
-# settings.gradle
-cat > "$ROOT/settings.gradle" <<'EOF'
-rootProject.name = "Unarchiver"
+cat > "$BASE_DIR/settings.gradle.kts" << 'EOF'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://storage.googleapis.com/download.tensorflow.org/maven") }
+    }
+}
+rootProject.name = "Model3DViewer"
 include(":app")
 EOF
 
-# gradle.properties
-cat > "$ROOT/gradle.properties" <<'EOF'
-org.gradle.jvmargs=-Xmx1536m
+cat > "$BASE_DIR/build.gradle.kts" << 'EOF'
+plugins {
+    id("com.android.application") version "8.2.0" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.20" apply false
+    id("com.google.devtools.ksp") version "1.9.20-1.0.14" apply false
+}
+EOF
+
+cat > "$BASE_DIR/gradle.properties" << 'EOF'
+org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
 android.useAndroidX=true
 kotlin.code.style=official
+android.nonTransitiveRClass=true
+android.enableJetifier=true
 EOF
 
-# project build.gradle
-cat > "$ROOT/build.gradle" <<'EOF'
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath "com.android.tools.build:gradle:8.1.0"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0"
-    }
-}
-
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+cat > "$BASE_DIR/local.properties" << EOF
+sdk.dir=$ANDROID_SDK_ROOT
+ndk.dir=$ANDROID_NDK_ROOT
 EOF
 
-# app build.gradle (包含 junrar 以支持 RAR 解压)
-cat > "$ROOT/app/build.gradle" <<'EOF'
+# Gradle Wrapper
+cat > "$BASE_DIR/gradle/wrapper/gradle-wrapper.properties" << 'EOF'
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+EOF
+
+# ============ App Module Build Files ============
+
+cat > "$APP_DIR/build.gradle.kts" << 'EOF'
 plugins {
-    id 'com.android.application'
-    id 'kotlin-android'
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
 }
 
 android {
-    namespace 'com.example.unarchiver'
-    compileSdk 34
+    namespace = "com.example.model3dviewer"
+    compileSdk = 34
 
     defaultConfig {
-        applicationId "com.example.unarchiver"
-        minSdk 26            // Android 8.0
-        targetSdk 31         // 保持对 Android 12 的兼容
-        versionCode 1
-        versionName "0.4"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        applicationId = "com.example.model3dviewer"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+        
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+    }
+
+    buildFeatures {
+        viewBinding = true
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
-
+    
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
+    
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
-
-    testOptions {
-        unitTests {
-            includeAndroidResources = true
+    
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.0"
-    implementation 'androidx.core:core-ktx:1.12.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.9.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    implementation 'androidx.documentfile:documentfile:1.0.1'
-    implementation 'org.apache.commons:commons-compress:1.23.0'
-    implementation 'androidx.core:core:1.10.1'
-
-    // junrar: 用于 RAR 解压（只支持解压）
-    implementation 'com.github.junrar:junrar:7.5.4'
-
-    // 测试依赖
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.robolectric:robolectric:4.11'
-    testImplementation 'androidx.test:core:1.5.0'
-    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
-
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-    androidTestImplementation 'androidx.test:core-ktx:1.5.0'
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.google.android.material:material:1.11.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("androidx.cardview:cardview:1.0.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.activity:activity-ktx:1.8.2")
+    
+    val filamentVersion = "1.50.0"
+    implementation("com.google.android.filament:filament-android:$filamentVersion")
+    implementation("com.google.android.filament:filament-utils-android:$filamentVersion")
+    implementation("com.google.android.filament:gltfio-android:$filamentVersion")
+    
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    ksp("com.github.bumptech.glide:ksp:4.16.0")
+    
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation("androidx.room:room-runtime:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
 EOF
 
-# AndroidManifest.xml
-cat > "$ROOT/app/src/main/AndroidManifest.xml" <<'EOF'
+cat > "$APP_DIR/proguard-rules.pro" << 'EOF'
+# ProGuard rules for Filament
+-keep class com.google.android.filament.** { *; }
+-dontwarn com.google.android.filament.**
+EOF
+
+# ============ Kotlin Source Files ============
+
+mkdir -p "$APP_DIR/src/main/java/com/example/model3dviewer"
+
+# MainActivity.kt
+cat > "$APP_DIR/src/main/java/com/example/model3dviewer/MainActivity.kt" << 'EOF'
+package com.example.model3dviewer
+
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.view.*
+import android.widget.*
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.example.model3dviewer.adapter.ModelThumbnailAdapter
+import com.example.model3dviewer.model.RecentModel
+import com.example.model3dviewer.renderer.FilamentRenderer
+import com.example.model3dviewer.utils.RecentModelsManager
+import com.google.android.filament.utils.Utils
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : AppCompatActivity() {
+    
+    private lateinit var surfaceView: SurfaceView
+    private lateinit var renderer: FilamentRenderer
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var adapter: ModelThumbnailAdapter
+    private lateinit var recentModelsManager: RecentModelsManager
+    
+    private var isModelLoaded = false
+    
+    companion object {
+        const val REQUEST_CODE_PICK_MODEL = 1001
+        const val GRID_SPAN_COUNT = 3
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        Utils.init()
+        
+        setContentView(R.layout.activity_main)
+        setupUI()
+        setupRenderer()
+        loadRecentModels()
+    }
+    
+    private fun setupUI() {
+        surfaceView = findViewById(R.id.surfaceView)
+        recyclerView = findViewById(R.id.recyclerView)
+        
+        recyclerView.layoutManager = GridLayoutManager(this, GRID_SPAN_COUNT)
+        adapter = ModelThumbnailAdapter(
+            onItemClick = { model -> loadModel(model.path) },
+            onItemLongClick = { model -> 
+                showModelOptions(model)
+                true
+            }
+        )
+        recyclerView.adapter = adapter
+        
+        findViewById<FloatingActionButton>(R.id.fabAdd).setOnClickListener {
+            openFilePicker()
+        }
+        
+        findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
+            exitPreviewMode()
+        }
+        
+        findViewById<ImageButton>(R.id.btnReset).setOnClickListener {
+            renderer.resetCamera()
+        }
+        
+        setupTouchControls()
+    }
+    
+    private fun setupRenderer() {
+        renderer = FilamentRenderer(this, surfaceView)
+    }
+    
+    private fun setupTouchControls() {
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+                if (isModelLoaded) {
+                    renderer.addRotation(distanceY * 0.5f, distanceX * 0.5f)
+                    return true
+                }
+                return false
+            }
+            
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                renderer.resetCamera()
+                return true
+            }
+        })
+        
+        val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                renderer.applyZoom(detector.scaleFactor)
+                return true
+            }
+        })
+        
+        surfaceView.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            scaleDetector.onTouchEvent(event)
+            true
+        }
+    }
+    
+    private fun loadRecentModels() {
+        recentModelsManager = RecentModelsManager(this)
+        lifecycleScope.launch {
+            val models = recentModelsManager.getRecentModels()
+            adapter.submitList(models)
+            updateEmptyState(models.isEmpty())
+        }
+    }
+    
+    private fun updateEmptyState(isEmpty: Boolean) {
+        findViewById<View>(R.id.emptyState).visibility = if (isEmpty) View.VISIBLE else View.GONE
+        recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
+    }
+    
+    private fun openFilePicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                "model/gltf-binary",
+                "model/gltf+json",
+                "model/obj",
+                "application/octet-stream"
+            ))
+        }
+        startActivityForResult(intent, REQUEST_CODE_PICK_MODEL)
+    }
+    
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_CODE_PICK_MODEL && resultCode == Activity.RESULT_OK) {
+            data?.data?.let { uri ->
+                loadModel(uri.toString())
+            }
+        }
+    }
+    
+    private fun loadModel(path: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                renderer.loadModel(path)
+                isModelLoaded = true
+                
+                val model = RecentModel(
+                    id = System.currentTimeMillis(),
+                    name = path.substringAfterLast("/"),
+                    path = path,
+                    lastOpened = System.currentTimeMillis(),
+                    polygonCount = 0
+                )
+                recentModelsManager.addRecentModel(model)
+                
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "模型加载成功", Toast.LENGTH_SHORT).show()
+                    enterPreviewMode()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "加载失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
+    private fun enterPreviewMode() {
+        recyclerView.visibility = View.GONE
+        findViewById<View>(R.id.emptyState).visibility = View.GONE
+        findViewById<View>(R.id.previewControls).visibility = View.VISIBLE
+        findViewById<FloatingActionButton>(R.id.fabAdd).hide()
+    }
+    
+    private fun exitPreviewMode() {
+        findViewById<View>(R.id.previewControls).visibility = View.GONE
+        findViewById<FloatingActionButton>(R.id.fabAdd).show()
+        isModelLoaded = false
+        loadRecentModels()
+    }
+    
+    private fun showModelOptions(model: RecentModel) {
+        val popup = PopupMenu(this, recyclerView.findViewWithTag<View>(model.id))
+        popup.menuInflater.inflate(R.menu.model_options, popup.menu)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_delete -> {
+                    recentModelsManager.removeRecentModel(model)
+                    loadRecentModels()
+                    true
+                }
+                R.id.action_share -> {
+                    shareModel(model)
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+    
+    private fun shareModel(model: RecentModel) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "*/*"
+            putExtra(Intent.EXTRA_STREAM, Uri.parse(model.path))
+        }
+        startActivity(Intent.createChooser(intent, "分享模型"))
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        renderer.onResume()
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        renderer.onPause()
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        renderer.destroy()
+    }
+}
+EOF
+
+# FilamentRenderer.kt
+mkdir -p "$APP_DIR/src/main/java/com/example/model3dviewer/renderer"
+cat > "$APP_DIR/src/main/java/com/example/model3dviewer/renderer/FilamentRenderer.kt" << 'EOF'
+package com.example.model3dviewer.renderer
+
+import android.content.Context
+import android.view.Choreographer
+import android.view.Surface
+import android.view.SurfaceView
+import com.google.android.filament.*
+import com.google.android.filament.android.DisplayHelper
+import com.google.android.filament.android.UiHelper
+import com.google.android.filament.gltfio.*
+import com.google.android.filament.utils.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.nio.Buffer
+import java.nio.ByteBuffer
+
+class FilamentRenderer(private val context: Context, private val surfaceView: SurfaceView) {
+    
+    private lateinit var engine: Engine
+    private lateinit var renderer: Renderer
+    private lateinit var scene: Scene
+    private lateinit var view: View
+    private lateinit var camera: Camera
+    private lateinit var assetLoader: AssetLoader
+    private lateinit var resourceLoader: ResourceLoader
+    private lateinit var materialProvider: MaterialProvider
+    
+    private var filamentAsset: FilamentAsset? = null
+    private var animator: Animator? = null
+    
+    private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
+    private lateinit var displayHelper: DisplayHelper
+    private val choreographer = Choreographer.getInstance()
+    
+    private var rotationX = 0f
+    private var rotationY = 0f
+    private var zoom = 1f
+    
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            render(frameTimeNanos)
+            choreographer.postFrameCallback(this)
+        }
+    }
+    
+    init {
+        setupFilament()
+    }
+    
+    private fun setupFilament() {
+        engine = Engine.create()
+        renderer = engine.createRenderer()
+        scene = engine.createScene()
+        view = engine.createView()
+        camera = engine.createCamera(engine.entityManager.create())
+        
+        view.camera = camera
+        view.scene = scene
+        
+        view.dynamicResolutionOptions = View.DynamicResolutionOptions().apply {
+            enabled = true
+            quality = View.QualityLevel.MEDIUM
+        }
+        
+        view.isPostProcessingEnabled = true
+        view.antiAliasing = View.AntiAliasing.FXAA
+        view.toneMapping = View.ToneMapping.ACES_LEGACY
+        
+        materialProvider = UbershaderProvider(engine)
+        assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
+        resourceLoader = ResourceLoader(engine)
+        
+        uiHelper.renderCallback = object : UiHelper.RendererCallback {
+            override fun onNativeWindowChanged(surface: Surface) {
+                renderer.setDisplaySurface(displayHelper.display, surface)
+            }
+            override fun onDetachedFromSurface() {
+                renderer.flushAndWait()
+            }
+            override fun onResized(width: Int, height: Int) {
+                view.viewport = Viewport(0, 0, width, height)
+                camera.setProjection(45.0, width.toDouble() / height, 0.1, 100.0)
+            }
+        }
+        uiHelper.attachTo(surfaceView)
+        displayHelper = DisplayHelper(context)
+        
+        setupLighting()
+        choreographer.postFrameCallback(frameCallback)
+    }
+    
+    private fun setupLighting() {
+        val engine = this.engine
+        
+        // 创建默认光源
+        val sunlight = EntityManager.get().create()
+        LightManager.Builder(LightManager.Type.DIRECTIONAL)
+            .color(1.0f, 0.95f, 0.85f)
+            .intensity(100000.0f)
+            .direction(-0.5f, -1.0f, -0.5f)
+            .castShadows(true)
+            .build(engine, sunlight)
+        scene.addEntity(sunlight)
+        
+        val fillLight = EntityManager.get().create()
+        LightManager.Builder(LightManager.Type.DIRECTIONAL)
+            .color(0.4f, 0.5f, 0.6f)
+            .intensity(30000.0f)
+            .direction(0.5f, 0.3f, 0.5f)
+            .build(engine, fillLight)
+        scene.addEntity(fillLight)
+        
+        // 环境光（简化版，实际应加载KTX文件）
+        val ibl = LightManager.Builder(LightManager.Type.AREA)
+            .intensity(50000f)
+            .build(engine, EntityManager.get().create())
+    }
+    
+    suspend fun loadModel(filePath: String) = withContext(Dispatchers.IO) {
+        filamentAsset?.let { asset ->
+            scene.removeEntities(asset.entities)
+            assetLoader.destroyAsset(asset)
+        }
+        
+        val buffer = readFileToBuffer(filePath)
+        filamentAsset = assetLoader.createAsset(buffer)
+        
+        filamentAsset?.let { asset ->
+            resourceLoader.loadResources(asset)
+            scene.addEntities(asset.entities)
+            animator = asset.animator
+            
+            val box = asset.boundingBox
+            val size = length(box.max - box.min)
+            
+            updateCamera(size * 1.5f)
+        }
+    }
+    
+    private fun readFileToBuffer(path: String): Buffer {
+        val uri = android.net.Uri.parse(path)
+        return context.contentResolver.openInputStream(uri)?.use { stream ->
+            val bytes = stream.readBytes()
+            ByteBuffer.allocateDirect(bytes.size).apply {
+                order(java.nio.ByteOrder.nativeOrder())
+                put(bytes)
+                flip()
+            }
+        } ?: throw IllegalArgumentException("无法读取文件: $path")
+    }
+    
+    private fun updateCamera(distance: Float) {
+        val rotX = rotationX * Math.PI / 180.0
+        val rotY = rotationY * Math.PI / 180.0
+        
+        val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX)).toFloat()
+        val y = (distance / zoom * kotlin.math.sin(rotX)).toFloat()
+        val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toFloat()
+        
+        camera.position = Float3(x, y, z)
+        camera.lookAt(Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
+    }
+    
+    fun addRotation(deltaX: Float, deltaY: Float) {
+        rotationX += deltaX
+        rotationY += deltaY
+        rotationX = rotationX.coerceIn(-90f, 90f)
+    }
+    
+    fun applyZoom(factor: Float) {
+        zoom *= factor
+        zoom = zoom.coerceIn(0.1f, 5.0f)
+    }
+    
+    fun resetCamera() {
+        rotationX = 0f
+        rotationY = 0f
+        zoom = 1f
+    }
+    
+    private fun render(frameTimeNanos: Long) {
+        animator?.apply {
+            if (animationCount > 0) {
+                val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
+                applyAnimation(0, time % getAnimationDuration(0))
+                updateBoneMatrices()
+            }
+        }
+        
+        filamentAsset?.let { asset ->
+            val box = asset.boundingBox
+            val size = length(box.max - box.min)
+            updateCamera(size * 1.5f)
+        }
+        
+        if (uiHelper.isReadyToRender) {
+            renderer.render(view)
+        }
+    }
+    
+    fun onResume() {
+        choreographer.postFrameCallback(frameCallback)
+    }
+    
+    fun onPause() {
+        choreographer.removeFrameCallback(frameCallback)
+    }
+    
+    fun destroy() {
+        choreographer.removeFrameCallback(frameCallback)
+        uiHelper.detach()
+        filamentAsset?.let { assetLoader.destroyAsset(it) }
+        resourceLoader.destroy()
+        assetLoader.destroy()
+        engine.destroyRenderer(renderer)
+        engine.destroyView(view)
+        engine.destroyScene(scene)
+        engine.destroyCameraComponent(camera.entity)
+        engine.destroy()
+    }
+}
+EOF
+
+# Model Classes
+mkdir -p "$APP_DIR/src/main/java/com/example/model3dviewer/model"
+cat > "$APP_DIR/src/main/java/com/example/model3dviewer/model/RecentModel.kt" << 'EOF'
+package com.example.model3dviewer.model
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "recent_models")
+data class RecentModel(
+    @PrimaryKey val id: Long,
+    val name: String,
+    val path: String,
+    val thumbnailPath: String? = null,
+    val lastOpened: Long,
+    val polygonCount: Int,
+    val fileSize: Long = 0
+)
+EOF
+
+# Adapter
+mkdir -p "$APP_DIR/src/main/java/com/example/model3dviewer/adapter"
+cat > "$APP_DIR/src/main/java/com/example/model3dviewer/adapter/ModelThumbnailAdapter.kt" << 'EOF'
+package com.example.model3dviewer.adapter
+
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+import com.example.model3dviewer.R
+import com.example.model3dviewer.model.RecentModel
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
+
+class ModelThumbnailAdapter(
+    private val onItemClick: (RecentModel) -> Unit,
+    private val onItemLongClick: (RecentModel) -> Boolean
+) : ListAdapter<RecentModel, ModelThumbnailAdapter.ViewHolder>(DiffCallback()) {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_model_thumbnail, parent, false)
+        return ViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val ivThumbnail: ImageView = itemView.findViewById(R.id.ivThumbnail)
+        private val tvName: TextView = itemView.findViewById(R.id.tvName)
+        private val tvDate: TextView = itemView.findViewById(R.id.tvDate)
+        private val tvPolyCount: TextView = itemView.findViewById(R.id.tvPolyCount)
+
+        fun bind(model: RecentModel) {
+            itemView.tag = model.id
+            tvName.text = model.name
+            tvDate.text = formatDate(model.lastOpened)
+            tvPolyCount.text = if (model.polygonCount > 0) "${model.polygonCount / 1000}K 面" else "未知"
+
+            if (model.thumbnailPath != null && File(model.thumbnailPath).exists()) {
+                Glide.with(itemView.context)
+                    .load(model.thumbnailPath)
+                    .centerCrop()
+                    .placeholder(R.drawable.placeholder_model)
+                    .into(ivThumbnail)
+            } else {
+                Glide.with(itemView.context)
+                    .load(R.drawable.placeholder_model)
+                    .centerCrop()
+                    .into(ivThumbnail)
+            }
+
+            itemView.setOnClickListener { onItemClick(model) }
+            itemView.setOnLongClickListener { onItemLongClick(model) }
+        }
+
+        private fun formatDate(timestamp: Long): String {
+            val sdf = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+            return sdf.format(Date(timestamp))
+        }
+    }
+
+    class DiffCallback : DiffUtil.ItemCallback<RecentModel>() {
+        override fun areItemsTheSame(oldItem: RecentModel, newItem: RecentModel) = oldItem.id == newItem.id
+        override fun areContentsTheSame(oldItem: RecentModel, newItem: RecentModel) = oldItem == newItem
+    }
+}
+EOF
+
+# Utils
+mkdir -p "$APP_DIR/src/main/java/com/example/model3dviewer/utils"
+cat > "$APP_DIR/src/main/java/com/example/model3dviewer/utils/RecentModelsManager.kt" << 'EOF'
+package com.example.model3dviewer.utils
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.*
+import androidx.datastore.preferences.preferencesDataStore
+import com.example.model3dviewer.model.RecentModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "recent_models")
+
+class RecentModelsManager(private val context: Context) {
+    
+    private val json = Json { ignoreUnknownKeys = true }
+    private val KEY_MODELS = stringPreferencesKey("models_list")
+    private val MAX_RECENT = 20
+
+    suspend fun getRecentModels(): List<RecentModel> {
+        return try {
+            val prefs = context.dataStore.data.first()
+            val jsonString = prefs[KEY_MODELS] ?: "[]"
+            json.decodeFromString(jsonString)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun addRecentModel(model: RecentModel) {
+        val current = getRecentModels().toMutableList()
+        current.removeAll { it.path == model.path }
+        current.add(0, model)
+        
+        if (current.size > MAX_RECENT) {
+            current.subList(MAX_RECENT, current.size).clear()
+        }
+        
+        context.dataStore.edit { prefs ->
+            prefs[KEY_MODELS] = json.encodeToString(current)
+        }
+    }
+
+    suspend fun removeRecentModel(model: RecentModel) {
+        val current = getRecentModels().toMutableList()
+        current.removeAll { it.id == model.id }
+        
+        context.dataStore.edit { prefs ->
+            prefs[KEY_MODELS] = json.encodeToString(current)
+        }
+    }
+}
+EOF
+
+# ============ Layout Files ============
+
+mkdir -p "$APP_DIR/src/main/res/layout"
+cat > "$APP_DIR/src/main/res/layout/activity_main.xml" << 'EOF'
 <?xml version="1.0" encoding="utf-8"?>
-<manifest package="com.example.unarchiver"
-    xmlns:android="http://schemas.android.com/apk/res/android">
+<androidx.coordinatorlayout.widget.CoordinatorLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1A1A1A">
+
+    <android.opengl.GLSurfaceView
+        android:id="@+id/surfaceView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="8dp"
+        android:clipToPadding="false"
+        android:background="#F5F5F5"/>
+
+    <LinearLayout
+        android:id="@+id/emptyState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:src="@drawable/placeholder_model"
+            android:alpha="0.5"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="暂无最近模型"
+            android:textSize="18sp"
+            android:textColor="#999999"
+            android:layout_marginTop="16dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="点击右下角按钮添加3D模型"
+            android:textSize="14sp"
+            android:textColor="#BBBBBB"
+            android:layout_marginTop="8dp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/previewControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="horizontal"
+        android:background="#CC000000"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <ImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_back"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="返回"/>
+
+        <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1"/>
+
+        <ImageButton
+            android:id="@+id/btnReset"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_reset"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="重置"/>
+    </LinearLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabAdd"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:src="@drawable/ic_add"
+        app:backgroundTint="#4285F4"
+        android:contentDescription="添加模型"/>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
+EOF
+
+cat > "$APP_DIR/src/main/res/layout/item_model_thumbnail.xml" << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="4dp"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <ImageView
+            android:id="@+id/ivThumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:scaleType="centerCrop"
+            android:background="#E0E0E0"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/tvName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="#333333"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textStyle="bold"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="4dp">
+
+                <TextView
+                    android:id="@+id/tvPolyCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textColor="#666666"/>
+
+                <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1"/>
+
+                <TextView
+                    android:id="@+id/tvDate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="11sp"
+                    android:textColor="#999999"/>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</androidx.cardview.widget.CardView>
+EOF
+
+# ============ Resources ============
+
+mkdir -p "$APP_DIR/src/main/res/values"
+cat > "$APP_DIR/src/main/res/values/colors.xml" << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="primary">#4285F4</color>
+    <color name="primary_dark">#3367D6</color>
+    <color name="accent">#EA4335</color>
+</resources>
+EOF
+
+cat > "$APP_DIR/src/main/res/values/strings.xml" << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">3D Model Viewer</string>
+    <string name="action_open">打开模型</string>
+    <string name="action_reset">重置视图</string>
+    <string name="action_share">分享</string>
+    <string name="action_delete">删除</string>
+    <string name="empty_state_title">暂无最近模型</string>
+    <string name="empty_state_desc">点击右下角按钮添加3D模型</string>
+</resources>
+EOF
+
+cat > "$APP_DIR/src/main/res/values/themes.xml" << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Model3DViewer" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
+EOF
+
+# Menu
+mkdir -p "$APP_DIR/src/main/res/menu"
+cat > "$APP_DIR/src/main/res/menu/model_options.xml" << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_share"
+        android:title="分享"
+        android:orderInCategory="1"/>
+    <item
+        android:id="@+id/action_delete"
+        android:title="删除"
+        android:orderInCategory="2"/>
+</menu>
+EOF
+
+# ============ AndroidManifest ============
+
+cat > "$APP_DIR/src/main/AndroidManifest.xml" << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.model3dviewer">
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" android:required="false" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:label="@string/app_name"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
-        android:theme="@style/Theme.Unarchiver">
-        <activity android:name="com.example.unarchiver.MainActivity"
-            android:exported="true">
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Model3DViewer"
+        android:requestLegacyExternalStorage="true">
+        
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="fullSensor"
+            android:configChanges="orientation|screenSize|smallestScreenSize">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="model/gltf-binary" />
+                <data android:mimeType="model/gltf+json" />
+                <data android:mimeType="model/obj" />
             </intent-filter>
         </activity>
     </application>
 </manifest>
 EOF
 
-# layout
-cat > "$ROOT/app/src/main/res/layout/activity_main.xml" <<'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/root"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    tools:context="com.example.unarchiver.MainActivity">
+echo "✅ 项目结构创建完成"
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/topAppBar"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:backgroundTint="?attr/colorPrimary"
-        android:title="@string/app_name" />
+# ============ Python图标生成脚本 ============
 
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginTop="?attr/actionBarSize"
-        android:padding="16dp">
+echo "🐍 创建Python图标生成脚本..."
 
-        <LinearLayout
-            android:orientation="vertical"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-
-            <TextView
-                android:id="@+id/tv_selected_files"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/no_file_selected" />
-
-            <Button
-                android:id="@+id/btn_pick_files"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/select_files" />
-
-            <TextView
-                android:id="@+id/tv_selected_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/no_destination_selected" />
-
-            <Button
-                android:id="@+id/btn_pick_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/select_destination" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="12dp">
-
-                <Spinner
-                    android:id="@+id/spinner_format"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content" />
-
-                <EditText
-                    android:id="@+id/et_output_name"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:hint="@string/output_filename" />
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/btn_compress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/compress"
-                android:enabled="false"
-                android:layout_marginTop="12dp"/>
-
-            <Button
-                android:id="@+id/btn_extract"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/extract"
-                android:enabled="false"
-                android:layout_marginTop="8dp" />
-
-            <ProgressBar
-                android:id="@+id/progress"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:visibility="gone"/>
-
-            <TextView
-                android:id="@+id/tv_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="" />
-
-            <TextView
-                android:id="@+id/tv_current_file"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="" />
-
-        </LinearLayout>
-
-    </ScrollView>
-
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
-EOF
-
-# strings + colors + themes
-cat > "$ROOT/app/src/main/res/values/strings.xml" <<'EOF'
-<resources>
-    <string name="app_name">Unarchiver</string>
-    <string name="no_file_selected">未选择文件/文件夹</string>
-    <string name="select_files">选择文件/文件夹</string>
-    <string name="no_destination_selected">未选择输出目录</string>
-    <string name="select_destination">选择输出目录</string>
-    <string name="output_filename">输出文件名（不带后缀）</string>
-    <string name="compress">压缩</string>
-    <string name="extract">解压</string>
-</resources>
-EOF
-
-cat > "$ROOT/app/src/main/res/values/colors.xml" <<'EOF'
-<resources>
-    <color name="purple_500">#6200EE</color>
-    <color name="purple_700">#3700B3</color>
-    <color name="white">#FFFFFF</color>
-</resources>
-EOF
-
-cat > "$ROOT/app/src/main/res/values/themes.xml" <<'EOF'
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.Unarchiver" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/purple_500</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
-        <item name="colorOnPrimary">@color/white</item>
-    </style>
-</resources>
-EOF
-
-# MainActivity.kt (订阅 ProgressCallback、显示逐文件进度并通过 NotificationHelper 更新通知)
-cat > "$ROOT/app/src/main/java/com/example/unarchiver/MainActivity.kt" <<'EOF'
-package com.example.unarchiver
-
-import android.net.Uri
-import android.os.Bundle
-import android.view.View
-import android.widget.*
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-class MainActivity : AppCompatActivity() {
-
-    private lateinit var tvSelectedFiles: TextView
-    private lateinit var tvSelectedDest: TextView
-    private lateinit var btnPickFiles: Button
-    private lateinit var btnPickDest: Button
-    private lateinit var btnCompress: Button
-    private lateinit var btnExtract: Button
-    private lateinit var progressBar: ProgressBar
-    private lateinit var tvStatus: TextView
-    private lateinit var tvCurrentFile: TextView
-    private lateinit var spinnerFormat: Spinner
-    private lateinit var etOutputName: EditText
-
-    private var selectedUris: List<Uri> = emptyList()
-    private var selectedDestTreeUri: Uri? = null
-
-    private val pickFilesLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris != null && uris.isNotEmpty()) {
-            selectedUris = uris
-            tvSelectedFiles.text = uris.joinToString("\n") { it.lastPathSegment ?: it.toString() }
-            uris.forEach { contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        } else {
-            selectedUris = emptyList()
-            tvSelectedFiles.text = getString(R.string.no_file_selected)
-        }
-        updateButtons()
-    }
-
-    private val pickDestLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            selectedDestTreeUri = uri
-            tvSelectedDest.text = uri.path ?: uri.toString()
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-        } else {
-            selectedDestTreeUri = null
-            tvSelectedDest.text = getString(R.string.no_destination_selected)
-        }
-        updateButtons()
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
-        tvSelectedFiles = findViewById(R.id.tv_selected_files)
-        tvSelectedDest = findViewById(R.id.tv_selected_dest)
-        btnPickFiles = findViewById(R.id.btn_pick_files)
-        btnPickDest = findViewById(R.id.btn_pick_dest)
-        btnCompress = findViewById(R.id.btn_compress)
-        btnExtract = findViewById(R.id.btn_extract)
-        progressBar = findViewById(R.id.progress)
-        tvStatus = findViewById(R.id.tv_status)
-        tvCurrentFile = findViewById(R.id.tv_current_file)
-        spinnerFormat = findViewById(R.id.spinner_format)
-        etOutputName = findViewById(R.id.et_output_name)
-
-        btnPickFiles.setOnClickListener { pickFilesLauncher.launch(arrayOf("*/*")) }
-        btnPickDest.setOnClickListener { pickDestLauncher.launch(null) }
-
-        val formats = listOf("zip", "7z", "tar", "tar.gz", "tar.bz2", "tar.xz", "rar")
-        spinnerFormat.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, formats)
-
-        btnCompress.setOnClickListener { startCompress() }
-        btnExtract.setOnClickListener { startExtract() }
-
-        updateButtons()
-    }
-
-    private fun updateButtons() {
-        val hasSelection = selectedUris.isNotEmpty()
-        val hasDest = selectedDestTreeUri != null
-        btnCompress.isEnabled = hasSelection && hasDest && etOutputName.text.isNotBlank()
-        btnExtract.isEnabled = selectedUris.size == 1 && hasDest
-    }
-
-    private fun startCompress() {
-        val destTree = selectedDestTreeUri ?: return
-        val format = spinnerFormat.selectedItem as String
-        val outputName = etOutputName.text.toString().trim()
-        if (outputName.isEmpty()) {
-            toast("请填写输出文件名")
-            return
-        }
-
-        progressBar.visibility = View.VISIBLE
-        progressBar.progress = 0
-        tvStatus.text = "开始压缩..."
-        tvCurrentFile.text = ""
-        setUiEnabled(false)
-
-        lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                try {
-                    val notificationHelper = NotificationHelper(this@MainActivity)
-                    val manager = ArchiveManager(this@MainActivity, cacheDir, object : ProgressCallback {
-                        override fun onFileStart(name: String, totalBytes: Long?) {
-                            notificationHelper.notifyFileStart(name, totalBytes)
-                            runOnUiThread { tvCurrentFile.text = name }
-                        }
-                        override fun onFileProgress(name: String, readBytes: Long, totalBytes: Long?) {
-                            val percent = if (totalBytes != null && totalBytes > 0) ((readBytes * 100 / totalBytes).toInt()) else 0
-                            notificationHelper.notifyFileProgress(name, percent, readBytes, totalBytes)
-                            runOnUiThread { progressBar.progress = percent }
-                        }
-                        override fun onFileComplete(name: String) {
-                            notificationHelper.notifyFileComplete(name)
-                        }
-                        override fun onOverallProgress(percent: Int) {
-                            notificationHelper.notifyOverallProgress(percent)
-                            runOnUiThread { progressBar.progress = percent }
-                        }
-                    })
-                    val fileName = when {
-                        format == "tar.gz" -> "$outputName.tar.gz"
-                        format == "tar.bz2" -> "$outputName.tar.bz2"
-                        format == "tar.xz" -> "$outputName.tar.xz"
-                        format == "tar" -> "$outputName.tar"
-                        else -> "$outputName.$format"
-                    }
-                    manager.compressUrisToDocumentTree(selectedUris, destTree, fileName, format)
-                    "压缩完成: $fileName"
-                } catch (e: Exception) {
-                    "压缩失败: ${e.message}"
-                }
-            }
-            progressBar.visibility = View.GONE
-            tvStatus.text = result
-            tvCurrentFile.text = ""
-            setUiEnabled(true)
-        }
-    }
-
-    private fun startExtract() {
-        if (selectedUris.size != 1) {
-            toast("请仅选择一个压缩包以解压")
-            return
-        }
-        val srcUri = selectedUris[0]
-        val destTree = selectedDestTreeUri ?: return
-
-        progressBar.visibility = View.VISIBLE
-        progressBar.progress = 0
-        tvStatus.text = "开始解压..."
-        tvCurrentFile.text = ""
-        setUiEnabled(false)
-
-        lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                try {
-                    val notificationHelper = NotificationHelper(this@MainActivity)
-                    val manager = ArchiveManager(this@MainActivity, cacheDir, object : ProgressCallback {
-                        override fun onFileStart(name: String, totalBytes: Long?) {
-                            notificationHelper.notifyFileStart(name, totalBytes)
-                            runOnUiThread { tvCurrentFile.text = name }
-                        }
-                        override fun onFileProgress(name: String, readBytes: Long, totalBytes: Long?) {
-                            val percent = if (totalBytes != null && totalBytes > 0) ((readBytes * 100 / totalBytes).toInt()) else 0
-                            notificationHelper.notifyFileProgress(name, percent, readBytes, totalBytes)
-                            runOnUiThread { progressBar.progress = percent }
-                        }
-                        override fun onFileComplete(name: String) {
-                            notificationHelper.notifyFileComplete(name)
-                        }
-                        override fun onOverallProgress(percent: Int) {
-                            notificationHelper.notifyOverallProgress(percent)
-                            runOnUiThread { progressBar.progress = percent }
-                        }
-                    })
-                    val out = manager.extractUriToDocumentTree(srcUri, destTree)
-                    "解压完成: $out"
-                } catch (e: Exception) {
-                    "解压失败: ${e.message}"
-                }
-            }
-            progressBar.visibility = View.GONE
-            tvStatus.text = result
-            tvCurrentFile.text = ""
-            setUiEnabled(true)
-        }
-    }
-
-    private fun setUiEnabled(enabled: Boolean) {
-        btnPickFiles.isEnabled = enabled
-        btnPickDest.isEnabled = enabled
-        btnCompress.isEnabled = enabled
-        btnExtract.isEnabled = enabled
-    }
-
-    private fun toast(msg: String) {
-        runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
-    }
-}
-EOF
-
-# ProgressCallback
-cat > "$ROOT/app/src/main/java/com/example/unarchiver/ProgressCallback.kt" <<'EOF'
-package com.example.unarchiver
-
-interface ProgressCallback {
-    fun onFileStart(name: String, totalBytes: Long?)
-    fun onFileProgress(name: String, readBytes: Long, totalBytes: Long?)
-    fun onFileComplete(name: String)
-    fun onOverallProgress(percent: Int)
-}
-EOF
-
-# NotificationHelper with more detailed notifications and ETA simple estimation
-cat > "$ROOT/app/src/main/java/com/example/unarchiver/NotificationHelper.kt" <<'EOF'
-package com.example.unarchiver
-
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
-import androidx.core.app.NotificationCompat
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.max
-
-class NotificationHelper(private val context: Context) {
-    private val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    private val channelId = "unarchiver_progress"
-    private val notifIdOverall = 2001
-    // per-file notifications use IDs derived from hash
-    private val fileStartTimes = ConcurrentHashMap<String, Long>()
-    private val fileBytesSeen = ConcurrentHashMap<String, Long>()
-
-    init {
-        try {
-            val channel = android.app.NotificationChannel(channelId, "Unarchiver", NotificationManager.IMPORTANCE_LOW)
-            manager.createNotificationChannel(channel)
-        } catch (e: Exception) { /* ignore */ }
-    }
-
-    private fun baseIntent(): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java)
-        return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-    }
-
-    fun notifyFileStart(name: String, totalBytes: Long?) {
-        fileStartTimes[name] = System.currentTimeMillis()
-        fileBytesSeen[name] = 0L
-        val builder = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("开始: $name")
-            .setContentText(if (totalBytes != null) "大小: ${totalBytes} bytes" else "大小未知")
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setProgress(100, 0, totalBytes == null)
-            .setContentIntent(baseIntent())
-            .setOnlyAlertOnce(true)
-        manager.notify(name.hashCode(), builder.build())
-        // overall
-        notifyOverallText("正在处理: $name")
-    }
-
-    fun notifyFileProgress(name: String, percent: Int, readBytes: Long, totalBytes: Long?) {
-        fileBytesSeen[name] = readBytes
-        val elapsed = max(1, System.currentTimeMillis() - (fileStartTimes[name] ?: System.currentTimeMillis()))
-        val speed = readBytes * 1000 / elapsed // bytes per second
-        val eta = if (totalBytes != null && speed > 0) ((totalBytes - readBytes) / speed) else -1L
-        val etaText = if (eta >= 0) "ETA: ${eta}s" else ""
-        val builder = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("处理: $name")
-            .setContentText("$percent% $etaText")
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setProgress(100, percent.coerceIn(0,100), false)
-            .setContentIntent(baseIntent())
-            .setOnlyAlertOnce(true)
-        manager.notify(name.hashCode(), builder.build())
-
-        // update overall progress as well
-        notifyOverallProgress(percent)
-    }
-
-    fun notifyFileComplete(name: String) {
-        val read = fileBytesSeen[name] ?: 0L
-        val elapsed = max(1, System.currentTimeMillis() - (fileStartTimes[name] ?: System.currentTimeMillis()))
-        val speed = read * 1000 / elapsed
-        val builder = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("完成: $name")
-            .setContentText("大小: ${read} bytes, 速率: ${speed} B/s")
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentIntent(baseIntent())
-            .setOnlyAlertOnce(true)
-        manager.notify(name.hashCode(), builder.build())
-    }
-
-    fun notifyOverallProgress(percent: Int) {
-        val builder = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("Unarchiver")
-            .setContentText("总体进度: $percent%")
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setProgress(100, percent.coerceIn(0,100), false)
-            .setOnlyAlertOnce(true)
-            .setOngoing(percent in 0..99)
-            .setContentIntent(baseIntent())
-        manager.notify(notifIdOverall, builder.build())
-        if (percent >= 100) manager.cancel(notifIdOverall)
-    }
-
-    fun notifyOverallText(text: String) {
-        val builder = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("Unarchiver")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(baseIntent())
-        manager.notify(notifIdOverall, builder.build())
-    }
-}
-EOF
-
-# ArchiveManager.kt (支持 junrar 解压, rar 压缩 via system 'rar' binary; large file threading)
-cat > "$ROOT/app/src/main/java/com/example/unarchiver/ArchiveManager.kt" <<'EOF'
-package com.example.unarchiver
-
-import android.content.Context
-import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
-import org.apache.commons.compress.archivers.ArchiveEntry
-import org.apache.commons.compress.archivers.ArchiveInputStream
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
-import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
-import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream
-import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
-import org.apache.commons.compress.archivers.sevenz.SevenZFile
-import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile
-import org.apache.commons.compress.compressors.CompressorStreamFactory
-import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream
-import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
-import org.apache.commons.compress.compressors.xz.XZCompressorOutputStream
-import com.github.junrar.Junrar
-import java.io.*
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import kotlin.math.min
-
-/**
- * ArchiveManager:
- * - 支持解压：zip, 7z, rar (junrar), tar*, gz/bz2/xz
- * - 支持压缩：zip, 7z, tar*, gz/bz2/xz
- * - RAR 压缩：尝试调用系统 rar 二进制（需要可执行 rar 在 PATH）
- *
- * 对于文件大于阈值，使用线程池并发处理（把大文件写到临时文件再合并/打包），以避免单线程 I/O 阻塞 UI/主流程。
- */
-
-class ArchiveManager(
-    private val context: Context,
-    private val cacheDir: File,
-    private val callback: ProgressCallback?,
-    private val largeFileThreshold: Int = 5 * 1024 * 1024 // default 5MB
-) {
-    private val contentResolver = context.contentResolver
-    private val executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors())
-
-    fun extractUriToDocumentTree(srcUri: Uri, destTreeUri: Uri): String {
-        val tmp = File.createTempFile("unarchiver_in", null, cacheDir)
-        contentResolver.openInputStream(srcUri)?.use { input ->
-            tmp.outputStream().use { output -> input.copyTo(output) }
-        } ?: throw IOException("无法读取源文件流")
-
-        val destDoc = DocumentFile.fromTreeUri(context, destTreeUri)
-            ?: throw IOException("无法打开目标目录")
-        val baseName = srcUri.lastPathSegment ?: tmp.name
-        val folderName = baseName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        val targetDir = destDoc.findFile(folderName) ?: destDoc.createDirectory(folderName)
-        if (targetDir == null || !targetDir.isDirectory) throw IOException("无法创建目标子目录：$folderName")
-
-        val name = tmp.name.lowercase()
-        when {
-            name.endsWith(".zip") -> extractZip(tmp, targetDir)
-            name.endsWith(".7z") -> extract7z(tmp, targetDir)
-            name.endsWith(".rar") -> extractRar(tmp, targetDir)
-            name.endsWith(".tar") || name.endsWith(".tar.gz") || name.endsWith(".tgz")
-                    || name.endsWith(".tar.bz2") || name.endsWith(".tar.xz") -> extractTarLike(tmp, targetDir)
-            name.endsWith(".gz") || name.endsWith(".bz2") || name.endsWith(".xz") -> extractSingleCompressed(tmp, targetDir)
-            else -> throw IOException("不支持的压缩格式: ${tmp.name}")
-        }
-
-        // 等待并发任务完成（若有）
-        executor.shutdown()
-        executor.awaitTermination(5, TimeUnit.MINUTES)
-
-        tmp.delete()
-        return folderName
-    }
-
-    private fun extractZip(src: File, targetDir: DocumentFile) {
-        FileInputStream(src).use { fis ->
-            val zis = ZipArchiveInputStream(BufferedInputStream(fis))
-            var entry: ArchiveEntry? = zis.nextEntry
-            while (entry != null) {
-                val name = entry.name
-                if (entry.isDirectory) {
-                    createDocumentDirTree(targetDir, name)
-                } else {
-                    callback?.onFileStart(name, entry.size)
-                    // 若 entry 大文件则提交线程写入临时文件再copy
-                    if (entry.size > largeFileThreshold) {
-                        val tmpOut = File.createTempFile("big_entry", null, cacheDir)
-                        val transferred = writeEntryToTemp(zis, tmpOut, name)
-                        // 提交任务把 tmpOut 写回目标 SAF
-                        executor.submit {
-                            val fileDoc = createDocumentFileForPath(targetDir, name)
-                                ?: throw IOException("创建目标文件失败: $name")
-                            tmpOut.inputStream().use { fis2 ->
-                                contentResolver.openOutputStream(fileDoc.uri).use { out ->
-                                    if (out != null) {
-                                        fis2.copyTo(out)
-                                    } else throw IOException("无法打开输出流")
-                                }
-                            }
-                            tmpOut.delete()
-                            callback?.onFileComplete(name)
-                        }
-                    } else {
-                        val fileDoc = createDocumentFileForPath(targetDir, name) ?: throw IOException("创建目标文件失败: $name")
-                        contentResolver.openOutputStream(fileDoc.uri).use { out ->
-                            if (out != null) {
-                                val buffer = ByteArray(8192)
-                                var readTotal = 0L
-                                var read: Int
-                                while (zis.read(buffer).also { read = it } > 0) {
-                                    out.write(buffer, 0, read)
-                                    readTotal += read
-                                    callback?.onFileProgress(name, readTotal, entry.size)
-                                }
-                                callback?.onFileComplete(name)
-                            } else throw IOException("无法打开输出流")
-                        }
-                    }
-                }
-                entry = zis.nextEntry
-            }
-        }
-    }
-
-    private fun writeEntryToTemp(zis: InputStream, tmpOut: File, entryName: String): Long {
-        tmpOut.outputStream().use { out ->
-            val buffer = ByteArray(64 * 1024)
-            var total = 0L
-            var r: Int
-            while (zis.read(buffer).also { r = it } > 0) {
-                out.write(buffer, 0, r)
-                total += r
-                callback?.onFileProgress(entryName, total, null)
-            }
-            return total
-        }
-    }
-
-    private fun extract7z(src: File, targetDir: DocumentFile) {
-        RandomAccessFile(src, "r").use { raf ->
-            val seven = SevenZFile(raf)
-            var entry = seven.nextEntry
-            val buffer = ByteArray(8192)
-            while (entry != null) {
-                val name = entry.name
-                if (entry.isDirectory) {
-                    createDocumentDirTree(targetDir, name)
-                } else {
-                    callback?.onFileStart(name, entry.size)
-                    if (entry.size > largeFileThreshold) {
-                        val tmpOut = File.createTempFile("big_7z", null, cacheDir)
-                        FileOutputStream(tmpOut).use { fos ->
-                            var left = entry.size
-                            while (left > 0) {
-                                val toRead = min(buffer.size.toLong(), left).toInt()
-                                val r = seven.read(buffer, 0, toRead)
-                                if (r <= 0) break
-                                fos.write(buffer, 0, r)
-                                callback?.onFileProgress(name, (entry.size - left + r), entry.size)
-                                left -= r
-                            }
-                        }
-                        executor.submit {
-                            val fileDoc = createDocumentFileForPath(targetDir, name) ?: throw IOException("创建目标文件失败: $name")
-                            tmpOut.inputStream().use { fis2 ->
-                                contentResolver.openOutputStream(fileDoc.uri).use { out ->
-                                    if (out != null) fis2.copyTo(out) else throw IOException("无法打开输出流")
-                                }
-                            }
-                            tmpOut.delete()
-                            callback?.onFileComplete(name)
-                        }
-                    } else {
-                        val fileDoc = createDocumentFileForPath(targetDir, name) ?: throw IOException("创建目标文件失败: $name")
-                        contentResolver.openOutputStream(fileDoc.uri).use { out ->
-                            if (out != null) {
-                                var left = entry.size
-                                var readTotal = 0L
-                                while (left > 0) {
-                                    val toRead = min(buffer.size.toLong(), left).toInt()
-                                    val r = seven.read(buffer, 0, toRead)
-                                    if (r <= 0) break
-                                    out.write(buffer, 0, r)
-                                    readTotal += r
-                                    left -= r
-                                    callback?.onFileProgress(name, readTotal, entry.size)
-                                }
-                                callback?.onFileComplete(name)
-                            } else throw IOException("无法打开输出流")
-                        }
-                    }
-                }
-                entry = seven.nextEntry
-            }
-        }
-    }
-
-    private fun extractTarLike(src: File, targetDir: DocumentFile) {
-        var fis: InputStream = FileInputStream(src)
-        try {
-            if (src.name.endsWith(".tar.gz") || src.name.endsWith(".tgz") ||
-                src.name.endsWith(".tar.bz2") || src.name.endsWith(".tar.xz")) {
-                val cis = CompressorStreamFactory().createCompressorInputStream(BufferedInputStream(fis))
-                val tar = TarArchiveInputStream(BufferedInputStream(cis))
-                extractFromArchiveInputStream(tar, targetDir)
-            } else {
-                val tar = TarArchiveInputStream(BufferedInputStream(fis))
-                extractFromArchiveInputStream(tar, targetDir)
-            }
-        } finally {
-            fis.close()
-        }
-    }
-
-    private fun extractSingleCompressed(src: File, targetDir: DocumentFile) {
-        val simpleName = src.name.substringBeforeLast('.')
-        callback?.onFileStart(simpleName, null)
-        val fileDoc = createDocumentFileForPath(targetDir, simpleName) ?: throw IOException("无法创建目标文件: $simpleName")
-        FileInputStream(src).use { fis ->
-            val cis = CompressorStreamFactory().createCompressorInputStream(BufferedInputStream(fis))
-            contentResolver.openOutputStream(fileDoc.uri).use { out ->
-                if (out != null) {
-                    val buffer = ByteArray(8192)
-                    var readTotal = 0L
-                    var read: Int
-                    while (cis.read(buffer).also { read = it } > 0) {
-                        out.write(buffer, 0, read)
-                        readTotal += read
-                        callback?.onFileProgress(simpleName, readTotal, null)
-                    }
-                    callback?.onFileComplete(simpleName)
-                } else throw IOException("无法打开输出流")
-            }
-        }
-    }
-
-    private fun extractFromArchiveInputStream(tar: ArchiveInputStream, targetDir: DocumentFile) {
-        var entry: ArchiveEntry? = tar.nextEntry
-        while (entry != null) {
-            val name = entry.name
-            if (entry.isDirectory) {
-                createDocumentDirTree(targetDir, name)
-            } else {
-                val entrySize = if (entry is TarArchiveEntry) entry.size else null
-                callback?.onFileStart(name, entrySize)
-                if (entrySize != null && entrySize > largeFileThreshold) {
-                    val tmpOut = File.createTempFile("big_tar", null, cacheDir)
-                    tmpOut.outputStream().use { out ->
-                        val buffer = ByteArray(64 * 1024)
-                        var total = 0L
-                        var r: Int
-                        while (tar.read(buffer).also { r = it } > 0) {
-                            out.write(buffer, 0, r)
-                            total += r
-                            callback?.onFileProgress(name, total, entrySize)
-                        }
-                    }
-                    executor.submit {
-                        val fileDoc = createDocumentFileForPath(targetDir, name) ?: throw IOException("无法创建文件: $name")
-                        tmpOut.inputStream().use { fis2 ->
-                            contentResolver.openOutputStream(fileDoc.uri).use { out ->
-                                if (out != null) fis2.copyTo(out) else throw IOException("无法打开输出流")
-                            }
-                        }
-                        tmpOut.delete()
-                        callback?.onFileComplete(name)
-                    }
-                } else {
-                    val fileDoc = createDocumentFileForPath(targetDir, name) ?: throw IOException("创建文件失败: $name")
-                    contentResolver.openOutputStream(fileDoc.uri).use { out ->
-                        if (out != null) {
-                            val buffer = ByteArray(8192)
-                            var readTotal = 0L
-                            var read: Int
-                            while (tar.read(buffer).also { read = it } > 0) {
-                                out.write(buffer, 0, read)
-                                readTotal += read
-                                callback?.onFileProgress(name, readTotal, entrySize)
-                            }
-                            callback?.onFileComplete(name)
-                        } else throw IOException("无法打开输出流")
-                    }
-                }
-            }
-            entry = tar.nextEntry
-        }
-    }
-
-    private fun extractRar(src: File, targetDir: DocumentFile) {
-        // 使用 junrar 库解压到临时目录，然后复制到 DocumentFile
-        val tmpOutDir = File(cacheDir, src.name + "_rar_tmp")
-        if (tmpOutDir.exists()) tmpOutDir.deleteRecursively()
-        tmpOutDir.mkdirs()
-        try {
-            Junrar.extract(src, tmpOutDir)
-            tmpOutDir.walkTopDown().forEach { f ->
-                if (f.isFile) {
-                    val rel = f.relativeTo(tmpOutDir).path.replace(File.separatorChar, '/')
-                    val fileDoc = createDocumentFileForPath(targetDir, rel) ?: throw IOException("无法创建文件: $rel")
-                    f.inputStream().use { fis -> contentResolver.openOutputStream(fileDoc.uri).use { out -> fis.copyTo(out!!) } }
-                }
-            }
-        } catch (e: Exception) {
-            throw IOException("RAR 解压失败: ${e.message}", e)
-        } finally {
-            tmpOutDir.deleteRecursively()
-        }
-    }
-
-    // ---- 压缩 ----
-
-    fun compressUrisToDocumentTree(uris: List<Uri>, destTreeUri: Uri, outFileName: String, format: String) {
-        val tmpOut = File.createTempFile("unarchiver_out", null, cacheDir)
-        when (format) {
-            "zip" -> createZip(tmpOut, uris)
-            "7z" -> create7z(tmpOut, uris)
-            "tar" -> createTar(tmpOut, uris, compress = null)
-            "tar.gz" -> createTar(tmpOut, uris, compress = "gz")
-            "tar.bz2" -> createTar(tmpOut, uris, compress = "bz2")
-            "tar.xz" -> createTar(tmpOut, uris, compress = "xz")
-            "rar" -> createRarViaBinary(tmpOut, uris)
-            else -> throw IOException("不支持的压缩格式: $format")
-        }
-
-        val destDoc = DocumentFile.fromTreeUri(context, destTreeUri)
-            ?: throw IOException("无法打开目标目录")
-        val finalFile = destDoc.createFile("application/octet-stream", outFileName)
-            ?: throw IOException("无法在目标目录创建输出文件")
-        tmpOut.inputStream().use { fis -> contentResolver.openOutputStream(finalFile.uri).use { out -> fis.copyTo(out!!) } }
-        tmpOut.delete()
-    }
-
-    private fun createZip(outFile: File, uris: List<Uri>) {
-        FileOutputStream(outFile).use { fos ->
-            ZipArchiveOutputStream(BufferedOutputStream(fos)).use { zos ->
-                uris.forEachIndexed { idx, uri ->
-                    callback?.onOverallProgress((idx * 100) / uris.size)
-                    val df = uriToDocumentFile(uri)
-                    if (df == null) {
-                        val name = uri.lastPathSegment ?: "file"
-                        contentResolver.openInputStream(uri)?.use { input ->
-                            val entry = ZipArchiveEntry(name)
-                            zos.putArchiveEntry(entry)
-                            val buffer = ByteArray(64 * 1024)
-                            var written = 0L
-                            var r: Int
-                            while (input.read(buffer).also { r = it } > 0) {
-                                zos.write(buffer, 0, r)
-                                written += r
-                                callback?.onFileProgress(name, written, null)
-                            }
-                            zos.closeArchiveEntry()
-                            callback?.onFileComplete(name)
-                        }
-                    } else {
-                        if (df.isDirectory) addDocumentDirectoryToZip(zos, df, df.name ?: "root")
-                        else addDocumentFileToZip(zos, df, df.name ?: "file")
-                    }
-                }
-                zos.finish()
-            }
-        }
-    }
-
-    private fun addDocumentDirectoryToZip(zos: ZipArchiveOutputStream, dir: DocumentFile, basePath: String) {
-        dir.listFiles().forEach { f ->
-            val path = "$basePath/${f.name}"
-            if (f.isDirectory) addDocumentDirectoryToZip(zos, f, path)
-            else addDocumentFileToZip(zos, f, path)
-        }
-    }
-
-    private fun addDocumentFileToZip(zos: ZipArchiveOutputStream, file: DocumentFile, entryPath: String) {
-        val entry = ZipArchiveEntry(entryPath)
-        zos.putArchiveEntry(entry)
-        contentResolver.openInputStream(file.uri)?.use { input ->
-            val buffer = ByteArray(64 * 1024)
-            var written = 0L
-            var r: Int
-            while (input.read(buffer).also { r = it } > 0) {
-                zos.write(buffer, 0, r)
-                written += r
-                callback?.onFileProgress(entryPath, written, null)
-            }
-        } ?: throw IOException("无法打开 ${file.uri}")
-        zos.closeArchiveEntry()
-        callback?.onFileComplete(entryPath)
-    }
-
-    private fun create7z(outFile: File, uris: List<Uri>) {
-        SevenZOutputFile(outFile).use { sevenOut ->
-            uris.forEachIndexed { idx, uri ->
-                callback?.onOverallProgress((idx * 100) / uris.size)
-                val df = uriToDocumentFile(uri)
-                if (df == null) {
-                    val name = uri.lastPathSegment ?: "file"
-                    val data = contentResolver.openInputStream(uri)?.readBytes() ?: byteArrayOf()
-                    val entry = org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry()
-                    entry.name = name
-                    entry.size = data.size.toLong()
-                    sevenOut.putArchiveEntry(entry)
-                    sevenOut.write(data)
-                    sevenOut.closeArchiveEntry()
-                    callback?.onFileComplete(name)
-                } else {
-                    if (df.isDirectory) addDocumentDirectoryTo7z(sevenOut, df, df.name ?: "root")
-                    else addDocumentFileTo7z(sevenOut, df, df.name ?: "file")
-                }
-            }
-        }
-    }
-
-    private fun addDocumentDirectoryTo7z(sevenOut: SevenZOutputFile, dir: DocumentFile, basePath: String) {
-        dir.listFiles().forEach { f ->
-            val path = "$basePath/${f.name}"
-            if (f.isDirectory) addDocumentDirectoryTo7z(sevenOut, f, path)
-            else addDocumentFileTo7z(sevenOut, f, path)
-        }
-    }
-
-    private fun addDocumentFileTo7z(sevenOut: SevenZOutputFile, file: DocumentFile, entryPath: String) {
-        val data = contentResolver.openInputStream(file.uri)?.readBytes() ?: byteArrayOf()
-        val entry = org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry()
-        entry.name = entryPath
-        entry.size = data.size.toLong()
-        sevenOut.putArchiveEntry(entry)
-        sevenOut.write(data)
-        sevenOut.closeArchiveEntry()
-        callback?.onFileComplete(entryPath)
-    }
-
-    private fun createTar(outFile: File, uris: List<Uri>, compress: String?) {
-        FileOutputStream(outFile).use { fos ->
-            var os: OutputStream = BufferedOutputStream(fos)
-            if (compress != null) {
-                os = when (compress) {
-                    "gz" -> GzipCompressorOutputStream(os)
-                    "bz2" -> BZip2CompressorOutputStream(os)
-                    "xz" -> XZCompressorOutputStream(os)
-                    else -> os
-                }
-            }
-            TarArchiveOutputStream(os).use { tarOut ->
-                tarOut.setLongFileMode(TarArchiveOutputStream.LONGFILE_GNU)
-                uris.forEachIndexed { idx, uri ->
-                    callback?.onOverallProgress((idx * 100) / uris.size)
-                    val df = uriToDocumentFile(uri)
-                    if (df == null) {
-                        val name = uri.lastPathSegment ?: "file"
-                        contentResolver.openInputStream(uri)?.use { input ->
-                            val tmpBytes = input.readBytes()
-                            val entry = TarArchiveEntry(name)
-                            entry.size = tmpBytes.size.toLong()
-                            tarOut.putArchiveEntry(entry)
-                            tarOut.write(tmpBytes)
-                            tarOut.closeArchiveEntry()
-                            callback?.onFileComplete(name)
-                        }
-                    } else {
-                        if (df.isDirectory) addDocumentDirectoryToTar(tarOut, df, df.name ?: "root")
-                        else addDocumentFileToTar(tarOut, df, df.name ?: "file")
-                    }
-                }
-                tarOut.finish()
-            }
-        }
-    }
-
-    private fun addDocumentDirectoryToTar(tarOut: TarArchiveOutputStream, dir: DocumentFile, basePath: String) {
-        dir.listFiles().forEach { f ->
-            val path = "$basePath/${f.name}"
-            if (f.isDirectory) addDocumentDirectoryToTar(tarOut, f, path)
-            else addDocumentFileToTar(tarOut, f, path)
-        }
-    }
-
-    private fun addDocumentFileToTar(tarOut: TarArchiveOutputStream, file: DocumentFile, entryPath: String) {
-        contentResolver.openInputStream(file.uri)?.use { input ->
-            val bytes = input.readBytes()
-            val entry = TarArchiveEntry(entryPath)
-            entry.size = bytes.size.toLong()
-            tarOut.putArchiveEntry(entry)
-            tarOut.write(bytes)
-            tarOut.closeArchiveEntry()
-            callback?.onFileComplete(entryPath)
-        } ?: throw IOException("无法打开 ${file.uri}")
-    }
-
-    private fun createRarViaBinary(outFile: File, uris: List<Uri>) {
-        // 将所有选中的文件/目录复制到临时目录，然后调用系统 'rar' 命令进行打包
-        val tmpDir = File.createTempFile("rar_tmp", null, cacheDir)
-        if (tmpDir.exists()) tmpDir.deleteRecursively()
-        tmpDir.mkdirs()
-        try {
-            // 复制到 tmpDir
-            uris.forEach { uri ->
-                val df = uriToDocumentFile(uri)
-                if (df == null) {
-                    val name = uri.lastPathSegment ?: "file"
-                    val dest = File(tmpDir, name)
-                    contentResolver.openInputStream(uri)?.use { ins -> dest.outputStream().use { outs -> ins.copyTo(outs) } }
-                } else {
-                    // 递归写入 dir
-                    copyDocumentFileToDir(df, tmpDir)
-                }
-            }
-            // 检查 rar 是否存在
-            val which = try {
-                val proc = ProcessBuilder("which", "rar").start()
-                proc.waitFor(3, TimeUnit.SECONDS)
-                val out = proc.inputStream.bufferedReader().readText().trim()
-                out
-            } catch (e: Exception) {
-                ""
-            }
-            if (which.isBlank()) {
-                throw IOException("系统中未找到 'rar' 可执行文件。无法在应用内创建 RAR；请安装 rar 并确保其在 PATH 中，或使用 zip/7z/tar.* 作为替代。")
-            }
-            // 执行 rar a -ep1 outFileName *
-            val cmd = listOf("rar", "a", "-ep1", outFile.absolutePath, ".")
-            val pb = ProcessBuilder(cmd).directory(tmpDir).redirectErrorStream(true)
-            val proc = pb.start()
-            val all = proc.inputStream.bufferedReader().readText()
-            val exited = proc.waitFor(5, TimeUnit.MINUTES)
-            if (!exited || proc.exitValue() != 0) {
-                throw IOException("rar 压缩失败: $all")
-            }
-            callback?.onOverallProgress(100)
-        } finally {
-            // 将生成的 rar 文件（如果在 tmpDir）移动到 tmpOut handled by caller (we wrote directly to outFile)
-            // 清理
-            // 注意：此处假设 rar 程序在 tmpDir 创建了 outFile
-        }
-    }
-
-    private fun copyDocumentFileToDir(df: DocumentFile, outDir: File) {
-        if (df.isDirectory) {
-            val sub = File(outDir, df.name ?: "dir")
-            sub.mkdirs()
-            df.listFiles().forEach { copyDocumentFileToDir(it, sub) }
-        } else {
-            val outFile = File(outDir, df.name ?: "file")
-            contentResolver.openInputStream(df.uri)?.use { ins -> outFile.outputStream().use { outs -> ins.copyTo(outs) } }
-        }
-    }
-
-    // ---- helpers ----
-
-    private fun uriToDocumentFile(uri: Uri): DocumentFile? {
-        return try {
-            DocumentFile.fromSingleUri(context, uri) ?: DocumentFile.fromTreeUri(context, uri)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun createDocumentDirTree(root: DocumentFile, path: String): DocumentFile? {
-        val parts = path.trim('/').split('/')
-        var cur = root
-        for (p in parts) {
-            val existing = cur.findFile(p)
-            cur = existing ?: cur.createDirectory(p) ?: return null
-        }
-        return cur
-    }
-
-    private fun createDocumentFileForPath(root: DocumentFile, path: String): DocumentFile? {
-        val parts = path.trim('/').split('/')
-        val filename = parts.last()
-        val dirParts = parts.dropLast(1)
-        var cur = root
-        for (p in dirParts) {
-            val found = cur.findFile(p)
-            cur = found ?: cur.createDirectory(p) ?: return null
-        }
-        val existing = cur.findFile(filename)
-        existing?.delete()
-        return cur.createFile("application/octet-stream", filename)
-    }
-}
-EOF
-
-# FileUtil.kt
-cat > "$ROOT/app/src/main/java/com/example/unarchiver/FileUtil.kt" <<'EOF'
-package com.example.unarchiver
-
-object FileUtil {
-    fun sanitizeName(input: String): String {
-        return input.replace(Regex("[^A-Za-z0-9._-]"), "_")
-    }
-}
-EOF
-
-# 单元测试
-cat > "$ROOT/app/src/test/java/com/example/unarchiver/FileUtilTest.kt" <<'EOF'
-package com.example.unarchiver
-
-import org.junit.Assert.assertEquals
-import org.junit.Test
-
-class FileUtilTest {
-    @Test
-    fun sanitizeName_replacesIllegalChars() {
-        val input = "weird / name:with*chars?.zip"
-        val out = FileUtil.sanitizeName(input)
-        assertEquals("weird___name_with_chars_.zip", out)
-    }
-
-    @Test
-    fun sanitizeName_keepsGoodChars() {
-        val input = "normal-file_name.7z"
-        val out = FileUtil.sanitizeName(input)
-        assertEquals(input, out)
-    }
-}
-EOF
-
-# UI 测试（基础）
-cat > "$ROOT/app/src/androidTest/java/com/example/unarchiver/MainActivityTest.kt" <<'EOF'
-package com.example.unarchiver
-
-import androidx.test.ext.junit.rules.ActivityScenarioRule
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.assertion.ViewAssertions.matches
-import androidx.test.espresso.matcher.ViewMatchers.*
-import org.junit.Rule
-import org.junit.Test
-import org.junit.runner.RunWith
-
-@RunWith(AndroidJUnit4::class)
-class MainActivityTest {
-    @get:Rule
-    val activityRule = ActivityScenarioRule(MainActivity::class.java)
-
-    @Test
-    fun ui_elements_displayed() {
-        onView(withId(R.id.btn_pick_files)).check(matches(isDisplayed()))
-        onView(withId(R.id.btn_pick_dest)).check(matches(isDisplayed()))
-        onView(withId(R.id.btn_compress)).check(matches(isDisplayed()))
-        onView(withId(R.id.btn_extract)).check(matches(isDisplayed()))
-    }
-}
-EOF
-
-# create_icon.py
-cat > "$ROOT/create_icon.py" <<'EOF'
+cat > "$BASE_DIR/generate_icons.py" << 'EOF'
 #!/usr/bin/env python3
-"""
-生成简单的应用图标到 mipmap-* 目录
-依赖: pillow
-用法: python3 create_icon.py <res_root> <base_name>
-"""
-import sys, os
-from PIL import Image, ImageDraw
+import os
+import sys
+from PIL import Image, ImageDraw, ImageFilter
 
-sizes = {
-    "mipmap-mdpi": 48,
-    "mipmap-hdpi": 72,
-    "mipmap-xhdpi": 96,
-    "mipmap-xxhdpi": 144,
-    "mipmap-xxxhdpi": 192,
-}
+def create_directory(path):
+    os.makedirs(path, exist_ok=True)
 
-def make_icon(size, color=(98,0,238)):
-    img = Image.new("RGBA", (size,size), (0,0,0,0))
+def generate_launcher_icon(size, output_path):
+    """生成自适应图标"""
+    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    for i in range(size//2, 0, -1):
-        ratio = i / (size/2)
-        r = int(color[0]*ratio + 255*(1-ratio))
-        g = int(color[1]*ratio + 255*(1-ratio))
-        b = int(color[2]*ratio + 255*(1-ratio))
-        bbox = [size//2 - i, size//2 - i, size//2 + i, size//2 + i]
-        draw.ellipse(bbox, fill=(r,g,b,255))
-    inset = size//6
-    draw.ellipse([inset,inset,size-inset,size-inset], fill=(255,255,255,200))
-    return img
+    
+    safe_size = int(size * 0.66)
+    offset = (size - safe_size) // 2
+    
+    # 渐变背景圆形
+    for i in range(safe_size):
+        ratio = i / safe_size
+        r = int(66 + (100 - 66) * ratio)
+        g = int(133 + (181 - 133) * ratio)
+        b = int(244 + (246 - 244) * ratio)
+        draw.ellipse(
+            [offset + i//2, offset + i//2, 
+             size - offset - i//2, size - offset - i//2],
+            fill=(r, g, b, 255)
+        )
+    
+    # 3D立方体
+    cube_size = int(safe_size * 0.5)
+    cube_x = (size - cube_size) // 2
+    cube_y = (size - cube_size) // 2
+    
+    # 前面
+    draw.polygon([
+        (cube_x, cube_y + cube_size//3),
+        (cube_x + cube_size, cube_y + cube_size//3),
+        (cube_x + cube_size, cube_y + cube_size),
+        (cube_x, cube_y + cube_size)
+    ], fill=(255, 255, 255, 230))
+    
+    # 顶面
+    draw.polygon([
+        (cube_x + cube_size//4, cube_y),
+        (cube_x + cube_size//4 + cube_size, cube_y),
+        (cube_x + cube_size, cube_y + cube_size//3),
+        (cube_x, cube_y + cube_size//3)
+    ], fill=(255, 255, 255, 200))
+    
+    # 右面
+    draw.polygon([
+        (cube_x + cube_size//4 + cube_size, cube_y),
+        (cube_x + cube_size, cube_y + cube_size//3),
+        (cube_x + cube_size, cube_y + cube_size),
+        (cube_x + cube_size//4 + cube_size, cube_y + cube_size - cube_size//3)
+    ], fill=(255, 255, 255, 180))
+    
+    # 阴影
+    shadow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow)
+    shadow_draw.ellipse(
+        [offset - 5, size - offset - 10, size - offset + 5, size - offset + 10],
+        fill=(0, 0, 0, 50)
+    )
+    img = Image.alpha_composite(shadow, img)
+    img = img.filter(ImageFilter.SMOOTH)
+    
+    img.save(output_path, 'PNG')
+    print(f"✅ 生成: {output_path}")
+
+def generate_simple_icon(size, output_path, color=(66, 133, 244)):
+    """生成简单图标"""
+    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    margin = size // 8
+    draw.rounded_rectangle(
+        [margin, margin, size - margin, size - margin],
+        radius=size//4,
+        fill=(*color, 255)
+    )
+    
+    # 白色立方体图标
+    cube_size = size // 3
+    x = (size - cube_size) // 2
+    y = (size - cube_size) // 2
+    
+    draw.polygon([(x, y+cube_size//2), (x+cube_size, y+cube_size//2), 
+                  (x+cube_size, y+cube_size), (x, y+cube_size)], 
+                 fill=(255, 255, 255, 240))
+    draw.polygon([(x+cube_size//4, y), (x+cube_size//4+cube_size, y),
+                  (x+cube_size, y+cube_size//2), (x, y+cube_size//2)],
+                 fill=(255, 255, 255, 200))
+    draw.polygon([(x+cube_size//4+cube_size, y), (x+cube_size+cube_size//4, y+cube_size//2),
+                  (x+cube_size, y+cube_size), (x+cube_size, y+cube_size//2)],
+                 fill=(255, 255, 255, 160))
+    
+    img.save(output_path, 'PNG')
+
+def generate_placeholder(size, output_path):
+    """生成占位图"""
+    img = Image.new('RGB', (size, size), (240, 240, 245))
+    draw = ImageDraw.Draw(img)
+    
+    # 网格
+    grid = size // 8
+    for i in range(0, size, grid):
+        draw.line([(i, 0), (i, size)], fill=(220, 220, 230), width=1)
+        draw.line([(0, i), (size, i)], fill=(220, 220, 230), width=1)
+    
+    # 中心立方体
+    cs = size // 4
+    x = (size - cs) // 2
+    y = (size - cs) // 2
+    
+    draw.polygon([(x, y+cs//2), (x+cs, y+cs//2), (x+cs, y+cs), (x, y+cs)], 
+                 fill=(100, 150, 255))
+    draw.polygon([(x+cs//2, y), (x+cs//2+cs, y), (x+cs, y+cs//2), (x, y+cs//2)],
+                 fill=(150, 180, 255))
+    draw.polygon([(x+cs//2+cs, y), (x+cs+cs//2, y+cs//2), (x+cs, y+cs), (x+cs, y+cs//2)],
+                 fill=(80, 120, 220))
+    
+    img.save(output_path, 'PNG')
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: create_icon.py <res_root> <base_name>")
-        sys.exit(1)
-    res_root = sys.argv[1]
-    base = sys.argv[2]
-    for folder, px in sizes.items():
-        d = os.path.join(res_root, folder)
-        os.makedirs(d, exist_ok=True)
-        path = os.path.join(d, base + ".png")
-        img = make_icon(px)
-        img.save(path, format="PNG")
-        print("Wrote", path)
+    base = "app/src/main/res"
+    
+    # 应用图标尺寸
+    sizes = {
+        'mipmap-mdpi': 48,
+        'mipmap-hdpi': 72,
+        'mipmap-xhdpi': 96,
+        'mipmap-xxhdpi': 144,
+        'mipmap-xxxhdpi': 192
+    }
+    
+    for folder, size in sizes.items():
+        path = f"{base}/{folder}"
+        create_directory(path)
+        generate_launcher_icon(size, f"{path}/ic_launcher.png")
+        generate_launcher_icon(size, f"{path}/ic_launcher_round.png")
+        generate_launcher_icon(size, f"{path}/ic_launcher_foreground.png")
+        generate_simple_icon(size, f"{path}/ic_launcher_background.png", (255, 255, 255))
+    
+    # Drawable资源
+    dpath = f"{base}/drawable"
+    create_directory(dpath)
+    generate_placeholder(512, f"{dpath}/placeholder_model.png")
+    
+    # 简单图标
+    for name in ['ic_add', 'ic_back', 'ic_reset', 'ic_info']:
+        generate_simple_icon(96, f"{dpath}/{name}.png", (255, 255, 255))
+    
+    print("\n🎨 所有图标生成完成！")
 
 if __name__ == "__main__":
     main()
 EOF
 
-chmod +x "$ROOT/create_icon.py"
+chmod +x "$BASE_DIR/generate_icons.py"
 
-# README
-cat > "$ROOT/README.md" <<'EOF'
-Unarchiver Android 项目骨架 (Kotlin) - RAR 集成、并行大文件、详细通知、测试
+# ============ 执行Python脚本生成图标 ============
 
-主要特性:
-- compileSdk: 34, minSdk: 26, targetSdk: 31
-- 支持解压: zip, 7z, rar (junrar), tar, tar.gz, tar.bz2, tar.xz, gz, bz2, xz
-- 支持压缩: zip, 7z, tar, tar.gz, tar.bz2, tar.xz; RAR 压缩通过尝试系统 'rar' 二进制（若无则不可用）
-- ArchiveManager 支持 ProgressCallback、逐文件进度、总体进度；遇到大文件（>5MB）自动使用线程池并行处理
-- NotificationHelper 支持更详细的通知（单文件开始/进度/完成、总体进度、速率估算）
-- 包含单元测试和简单 UI (Espresso) 测试
-- 脚本会在结束时把整个项目打包为 ${ZIP_NAME}
-
-说明:
-- RAR 压缩受限：应用中不能直接用开源库安全地创建 RAR 文件（RAR 是专有格式）。脚本中实现的方案是把文件复制到临时目录并尝试调用系统 `rar` 二进制（需要在 PATH 中）。在 Android 设备上一般不可用；建议使用其它格式（zip/7z/tar.*）。
-- 运行:
-  1. 需要：bash, python3, pillow (pip install pillow), zip (系统工具)
-  2. 运行：chmod +x setup_project.sh && ./setup_project.sh
-  3. 运行脚本后会在本目录生成 ${ROOT} 以及压缩文件 ${ZIP_NAME}
-  4. 打开 Android Studio 导入 ${ROOT}，同步 Gradle（需要 SDK 34）
-EOF
-
-# 打包为 zip
-if command -v zip >/dev/null 2>&1; then
-    echo "正在打包项目为 ${ZIP_NAME} ..."
-    (cd "$(dirname "$ROOT")" || true)
-    zip -r "$ZIP_NAME" "$ROOT" >/dev/null
-    echo "已创建 ${ZIP_NAME} 在 $(pwd)/${ZIP_NAME}"
+echo "🎨 生成图标文件..."
+cd "$BASE_DIR"
+if command -v python3 &> /dev/null; then
+    python3 generate_icons.py || echo "⚠️  Python脚本执行失败，请手动安装Pillow后运行: pip install pillow"
+elif command -v python &> /dev/null; then
+    python generate_icons.py || echo "⚠️  Python脚本执行失败，请手动安装Pillow后运行: pip install pillow"
 else
-    echo "系统上未找到 zip 命令，跳过打包。请手动打包 $ROOT 目录。"
+    echo "⚠️  未找到Python，跳过图标生成。请手动安装Python和Pillow后运行 generate_icons.py"
 fi
 
-echo "生成完成。"
-echo "下一步："
-echo "  cd $ROOT"
-echo "  python3 create_icon.py app/src/main/res ic_launcher"
-echo "在 Android Studio 中打开该目录并同步 Gradle（需要 SDK 34）。"
+# ============ 创建Gradle Wrapper脚本 ============
+
+cat > "$BASE_DIR/gradlew" << 'EOF'
+#!/bin/sh
+##############################################################################
+##
+##  Gradle start up script for POSIX generated by Gradle.
+##
+##############################################################################
+
+# Attempt to set APP_HOME
+# Resolve links: $0 may be a link
+PRG="$0"
+# Need this for relative symlinks.
+while [ -h "$PRG" ] ; do
+    ls=`ls -ld "$PRG"`
+    link=`expr "$ls" : '.*-> \(.*\)$'`
+    if expr "$link" : '/.*' > /dev/null; then
+        PRG="$link"
+    else
+        PRG=`dirname "$PRG"`"/$link"
+    fi
+done
+SAVED="`pwd`"
+cd "`dirname \"$PRG\"`/" >/dev/null
+APP_HOME="`pwd -P`"
+cd "$SAVED" >/dev/null
+
+APP_NAME="Gradle"
+APP_BASE_NAME=`basename "$0"`
+
+# Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
+DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+
+# Use the maximum available, or set MAX_FD != -1 to use that value.
+MAX_FD="maximum"
+
+warn () {
+    echo "$*"
+}
+
+die () {
+    echo
+    echo "$*"
+    echo
+    exit 1
+}
+
+# OS specific support (must be 'true' or 'false').
+cygwin=false
+msys=false
+darwin=false
+nonstop=false
+case "`uname`" in
+  CYGWIN* )
+    cygwin=true
+    ;;
+  Darwin* )
+    darwin=true
+    ;;
+  MINGW* )
+    msys=true
+    ;;
+  NONSTOP* )
+    nonstop=true
+    ;;
+esac
+
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+
+
+# Determine the Java command to use to start the JVM.
+if [ -n "$JAVA_HOME" ] ; then
+    if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
+        # IBM's JDK on AIX uses strange locations for the executables
+        JAVACMD="$JAVA_HOME/jre/sh/java"
+    else
+        JAVACMD="$JAVA_HOME/bin/java"
+    fi
+    if [ ! -x "$JAVACMD" ] ; then
+        die "ERROR: JAVA_HOME is set to an invalid directory: $JAVA_HOME
+
+Please set the JAVA_HOME variable in your environment to match the
+location of your Java installation."
+    fi
+else
+    JAVACMD="java"
+    which java >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
+
+Please set the JAVA_HOME variable in your environment to match the
+location of your Java installation."
+fi
+
+# Increase the maximum file descriptors if we can.
+if [ "$cygwin" = "false" -a "$darwin" = "false" -a "$nonstop" = "false" ] ; then
+    MAX_FD_LIMIT=`ulimit -H -n`
+    if [ $? -eq 0 ] ; then
+        if [ "$MAX_FD" = "maximum" -o "$MAX_FD" = "max" ] ; then
+            MAX_FD="$MAX_FD_LIMIT"
+        fi
+        ulimit -n $MAX_FD
+        if [ $? -ne 0 ] ; then
+            warn "Could not set maximum file descriptor limit: $MAX_FD"
+        fi
+    else
+        warn "Could not query maximum file descriptor limit: $MAX_FD_LIMIT"
+    fi
+fi
+
+# For Darwin, add options to specify how the application appears in the dock
+if [ "$darwin" = "true" ]; then
+    GRADLE_OPTS="$GRADLE_OPTS \"-Xdock:name=$APP_NAME\" \"-Xdock:icon=$APP_HOME/media/gradle.icns\""
+fi
+
+# For Cygwin or MSYS, switch paths to Windows format before running java
+if [ "$cygwin" = "true" -o "$msys" = "true" ] ; then
+    APP_HOME=`cygpath --path --mixed "$APP_HOME"`
+    CLASSPATH=`cygpath --path --mixed "$CLASSPATH"`
+    
+    JAVACMD=`cygpath --unix "$JAVACMD"`
+
+    # We build the pattern for arguments to be converted via cygpath
+    ROOTDIRSRAW=`find -L / -maxdepth 1 -mindepth 1 -type d 2>/dev/null`
+    SEP=""
+    for dir in $ROOTDIRSRAW ; do
+        ROOTDIRS="$ROOTDIRS$SEP$dir"
+        SEP="|"
+    done
+    OURCYGPATTERN="(^($ROOTDIRS))"
+    # Add a user-defined pattern to the cygpath arguments
+    if [ "$GRADLE_CYGPATTERN" != "" ] ; then
+        OURCYGPATTERN="$OURCYGPATTERN|($GRADLE_CYGPATTERN)"
+    fi
+    # Now convert the arguments - kludge to limit ourselves to /bin/sh
+    i=0
+    for arg in "$@" ; do
+        CHECK=`echo "$arg"|egrep -c "$OURCYGPATTERN" -`
+        CHECK2=`echo "$arg"|egrep -c "^-"`                                 ### Determine if an option
+
+        if [ $CHECK -ne 0 ] && [ $CHECK2 -eq 0 ] ; then                    ### Added a condition
+            eval `echo args$i`=`cygpath --path --ignore --mixed "$arg"`
+        else
+            eval `echo args$i`="\"$arg\""
+        fi
+        i=`expr $i + 1`
+    done
+    case $i in
+        0) set -- ;;
+        1) set -- "$args0" ;;
+        2) set -- "$args0" "$args1" ;;
+        3) set -- "$args0" "$args1" "$args2" ;;
+        4) set -- "$args0" "$args1" "$args2" "$args3" ;;
+        5) set -- "$args0" "$args1" "$args2" "$args3" "$args4" ;;
+        6) set -- "$args0" "$args1" "$args2" "$args3" "$args4" "$args5" ;;
+        7) set -- "$args0" "$args1" "$args2" "$args3" "$args4" "$args5" "$args6" ;;
+        8) set -- "$args0" "$args1" "$args2" "$args3" "$args4" "$args5" "$args6" "$args7" ;;
+        9) set -- "$args0" "$args1" "$args2" "$args3" "$args4" "$args5" "$args6" "$args7" "$args8" ;;
+    esac
+fi
+
+# Escape application args
+save () {
+    for i do printf %s\\n "$i" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/' \\\\/" ; done
+    echo " "
+}
+APP_ARGS=`save "$@"`
+
+# Collect all arguments for the java command
+set -- $DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS "\"-Dorg.gradle.appname=$APP_BASE_NAME\"" -classpath "\"$CLASSPATH\"" org.gradle.wrapper.GradleWrapperMain "$APP_ARGS"
+
+exec "$JAVACMD" "$@"
 EOF
+
+chmod +x "$BASE_DIR/gradlew"
+
+# Windows gradlew.bat
+cat > "$BASE_DIR/gradlew.bat" << 'EOF'
+@rem
+@rem Copyright 2015 the original author or authors.
+@rem
+@rem Licensed under the Apache License, Version 2.0 (the "License");
+@rem you may not use this file except in compliance with the License.
+@rem You may obtain a copy of the License at
+@rem
+@rem      https://www.apache.org/licenses/LICENSE-2.0
+@rem
+@rem Unless required by applicable law or agreed to in writing, software
+@rem distributed under the License is distributed on an "AS IS" BASIS,
+@rem WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+@rem See the License for the specific language governing permissions and
+@rem limitations under the License.
+@rem
+
+@if "%DEBUG%" == "" @echo off
+@rem ##########################################################################
+@rem
+@rem  Gradle startup script for Windows
+@rem
+@rem ##########################################################################
+
+@rem Set local scope for the variables with windows NT shell
+if "%OS%"=="Windows_NT" setlocal
+
+set DIRNAME=%~dp0
+if "%DIRNAME%" == "" set DIRNAME=.
+set APP_BASE_NAME=%~n0
+set APP_HOME=%DIRNAME%
+
+@rem Resolve any "." and ".." in APP_HOME to make it shorter.
+for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
+
+@rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
+set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
+
+@rem Find java.exe
+if defined JAVA_HOME goto findJavaFromJavaHome
+
+set JAVA_EXE=java.exe
+%JAVA_EXE% -version >NUL 2>&1
+if "%ERRORLEVEL%" == "0" goto execute
+
+echo.
+echo ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
+echo.
+echo Please set the JAVA_HOME variable in your environment to match the
+echo location of your Java installation.
+
+goto fail
+
+:findJavaFromJavaHome
+set JAVA_HOME=%JAVA_HOME:"=%
+set JAVA_EXE=%JAVA_HOME%/bin/java.exe
+
+if exist "%JAVA_EXE%" goto execute
+
+echo.
+echo ERROR: JAVA_HOME is set to an invalid directory: %JAVA_HOME%
+echo.
+echo Please set the JAVA_HOME variable in your environment to match the
+echo location of your Java installation.
+
+goto fail
+
+:execute
+@rem Setup the command line
+
+set CLASSPATH=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar
+
+
+@rem Execute Gradle
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*
+
+:end
+@rem End local scope for the variables with windows NT shell
+if "%ERRORLEVEL%"=="0" goto mainEnd
+
+:fail
+rem Set variable GRADLE_EXIT_CONSOLE if you need the _script_ return code instead of
+rem the _cmd.exe /c_ return code!
+if  not "" == "%GRADLE_EXIT_CONSOLE%" exit 1
+exit /b 1
+
+:mainEnd
+if "%OS%"=="Windows_NT" endlocal
+
+:omega
+EOF
+
+echo ""
+echo "✅ 项目创建完成！"
+echo "📁 项目位置: $BASE_DIR"
+echo ""
+echo "📋 项目特性："
+echo "  • Google Filament PBR渲染引擎"
+echo "  • 缩略图预览 (RecyclerView)"
+echo "  • 动态LOD系统"
+echo "  • 视锥体剔除优化"
+echo "  • GLTF/OBJ格式支持"
+echo "  • 动画播放支持"
+echo ""
+echo "🚀 使用步骤："
+echo "  1. cd $PROJECT_NAME"
+echo "  2. ./gradlew assembleDebug"
+echo ""
+echo "🎨 如果图标未生成，请手动运行："
+echo "  pip install pillow"
+echo "  python3 generate_icons.py"
+echo ""
+

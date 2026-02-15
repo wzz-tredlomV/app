@@ -1,115 +1,93 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout
+<androidx.coordinatorlayout.widget.CoordinatorLayout 
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/root"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context="com.example.unarchiver.MainActivity">
+    android:background="#1A1A1A">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/topAppBar"
+    <android.opengl.GLSurfaceView
+        android:id="@+id/surfaceView"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:backgroundTint="?attr/colorPrimary"
-        android:title="@string/app_name" />
+        android:layout_height="match_parent"/>
 
-    <ScrollView
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="?attr/actionBarSize"
-        android:padding="16dp">
+        android:padding="8dp"
+        android:clipToPadding="false"
+        android:background="#F5F5F5"/>
 
-        <LinearLayout
-            android:orientation="vertical"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+    <LinearLayout
+        android:id="@+id/emptyState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone">
 
-            <TextView
-                android:id="@+id/tv_selected_files"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/no_file_selected" />
+        <ImageView
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:src="@drawable/placeholder_model"
+            android:alpha="0.5"/>
 
-            <Button
-                android:id="@+id/btn_pick_files"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/select_files" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="暂无最近模型"
+            android:textSize="18sp"
+            android:textColor="#999999"
+            android:layout_marginTop="16dp"/>
 
-            <TextView
-                android:id="@+id/tv_selected_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/no_destination_selected" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="点击右下角按钮添加3D模型"
+            android:textSize="14sp"
+            android:textColor="#BBBBBB"
+            android:layout_marginTop="8dp"/>
+    </LinearLayout>
 
-            <Button
-                android:id="@+id/btn_pick_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/select_destination" />
+    <LinearLayout
+        android:id="@+id/previewControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="horizontal"
+        android:background="#CC000000"
+        android:padding="16dp"
+        android:visibility="gone">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="12dp">
+        <ImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_back"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="返回"/>
 
-                <Spinner
-                    android:id="@+id/spinner_format"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content" />
+        <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1"/>
 
-                <EditText
-                    android:id="@+id/et_output_name"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:hint="@string/output_filename" />
-            </LinearLayout>
+        <ImageButton
+            android:id="@+id/btnReset"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_reset"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="重置"/>
+    </LinearLayout>
 
-            <Button
-                android:id="@+id/btn_compress"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/compress"
-                android:enabled="false"
-                android:layout_marginTop="12dp"/>
-
-            <Button
-                android:id="@+id/btn_extract"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/extract"
-                android:enabled="false"
-                android:layout_marginTop="8dp" />
-
-            <ProgressBar
-                android:id="@+id/progress"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:visibility="gone"/>
-
-            <TextView
-                android:id="@+id/tv_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="" />
-
-            <TextView
-                android:id="@+id/tv_current_file"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="" />
-
-        </LinearLayout>
-
-    </ScrollView>
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabAdd"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:src="@drawable/ic_add"
+        app:backgroundTint="#4285F4"
+        android:contentDescription="添加模型"/>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
