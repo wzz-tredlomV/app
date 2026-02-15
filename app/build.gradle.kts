@@ -60,7 +60,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     
     // Filament
-    val filamentVersion = "1.56.2"
+    val filamentVersion = "1.23.1"
     implementation("com.google.android.filament:filament-android:$filamentVersion")
     implementation("com.google.android.filament:filament-utils-android:$filamentVersion")
     implementation("com.google.android.filament:gltfio-android:$filamentVersion")
