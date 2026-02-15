@@ -58,23 +58,27 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.cardview:cardview:1.0.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.activity:activity-ktx:1.8.2")
     
+    // Filament
     val filamentVersion = "1.50.0"
     implementation("com.google.android.filament:filament-android:$filamentVersion")
     implementation("com.google.android.filament:filament-utils-android:$filamentVersion")
     implementation("com.google.android.filament:gltfio-android:$filamentVersion")
     
+    // Glide
     implementation("com.github.bumptech.glide:glide:4.16.0")
     ksp("com.github.bumptech.glide:ksp:4.16.0")
     
+    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    
+    // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
-    implementation("androidx.room:room-runtime:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
+    
+    // Serialization for DataStore
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
+
