@@ -56,7 +56,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         view.camera = camera
         view.scene = scene
         
-        // 1.69.2 API: 直接设置属性，不使用命名参数
         val options = View.DynamicResolutionOptions()
         options.enabled = true
         options.quality = View.QualityLevel.MEDIUM
@@ -72,18 +71,17 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
-                // 1.69.2 API: 使用engine的surface方法
-                renderer.setDisplaySurface(displayHelper.display, surface)
+                // 1.69.2: 使用底层API设置surface
+                engine.setSurface(surface)
             }
             override fun onDetachedFromSurface() {
-                // 1.69.2 API: 使用engine的surface方法
-                renderer.flushAndWait()
+                engine.flushAndWait()
             }
             override fun onResized(width: Int, height: Int) {
                 view.viewport = Viewport(0, 0, width, height)
                 val aspect = width.toDouble() / height.toDouble()
-                // 1.69.2 API: 使用正确的setProjection重载
-                camera.setProjection(Camera.Projection.PERSPECTIVE, 45.0, aspect, 0.1, 1000.0)
+                // 1.69.2: 正确的setProjection调用
+                camera.setProjection(45.0, aspect, 0.1, 1000.0, Camera.Fov.VERTICAL)
             }
         }
         uiHelper.attachTo(surfaceView)
@@ -153,7 +151,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         val y = (distance / zoom * kotlin.math.sin(rotX)).toFloat()
         val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toFloat()
         
-        // 1.69.2 API: 使用正确的setPosition重载
+        // 1.69.2: 使用setPosition(x, y, z)重载
         camera.setPosition(x.toDouble(), y.toDouble(), z.toDouble())
         camera.lookAt(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     }
@@ -177,7 +175,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     
     private fun render(frameTimeNanos: Long) {
         filamentAsset?.let { asset ->
-            // 1.69.2 API: 正确获取animator
+            // 1.69.2: 获取animator实例
             val animator = asset.animator
             if (animator.animationCount > 0) {
                 val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
