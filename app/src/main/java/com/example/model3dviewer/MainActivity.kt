@@ -1,6 +1,6 @@
-// MainActivity.kt
 package com.example.model3dviewer
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -302,12 +302,12 @@ class MainActivity : AppCompatActivity() {
     private fun shareModel(model: RecentModel) {
         try {
             val uri = Uri.parse(model.path)
-            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "*/*"
-                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(android.content.Intent.createChooser(intent, "分享模型"))
+            startActivity(Intent.createChooser(intent, "分享模型"))
         } catch (e: Exception) {
             Toast.makeText(this, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
