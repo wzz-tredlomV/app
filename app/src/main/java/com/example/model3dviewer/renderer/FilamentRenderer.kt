@@ -57,39 +57,31 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         view.camera = camera
         view.scene = scene
         
-        // 1.69.2新API：动态分辨率
-        view.setDynamicResolutionOptions(
-            View.DynamicResolutionOptions(
-                enabled = true,
-                quality = View.QualityLevel.MEDIUM
-            )
+        // 动态分辨率
+        view.dynamicResolutionOptions = View.DynamicResolutionOptions(
+            enabled = true,
+            quality = View.QualityLevel.MEDIUM
         )
         
         view.isPostProcessingEnabled = true
         view.antiAliasing = View.AntiAliasing.FXAA
-        view.toneMapping = View.ToneMapping.ACES_LEGACY
+        view.toneMapping = View.ToneMapping.ACES
         
-        // 1.69.2新API：UbershaderProvider构造方式
-        materialProvider = UbershaderProvider(engine, true)
+        materialProvider = UbershaderProvider(engine)
         assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
-        resourceLoader = ResourceLoader(engine, true)
+        resourceLoader = ResourceLoader(engine)
         
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
-                renderer.setDisplaySurface(displayHelper.display, surface)
+                renderer.setSurface(surface)
             }
             override fun onDetachedFromSurface() {
-                renderer.flushAndWait()
+                renderer.clearSurface()
             }
             override fun onResized(width: Int, height: Int) {
                 view.viewport = Viewport(0, 0, width, height)
-                camera.setProjection(
-                    Camera.Projection.PERSPECTIVE,
-                    45.0,
-                    width.toDouble() / height,
-                    0.1,
-                    1000.0
-                )
+                val aspect = width.toDouble() / height.toDouble()
+                camera.setProjection(45.0, aspect, 0.1, 1000.0, Camera.Fov.VERTICAL)
             }
         }
         uiHelper.attachTo(surfaceView)
@@ -100,9 +92,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     private fun setupLighting() {
-        val engine = this.engine
-        
-        // 主光源
         val sunlight = EntityManager.get().create()
         LightManager.Builder(LightManager.Type.DIRECTIONAL)
             .color(1.0f, 0.95f, 0.85f)
@@ -112,7 +101,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             .build(engine, sunlight)
         scene.addEntity(sunlight)
         
-        // 补光
         val fillLight = EntityManager.get().create()
         LightManager.Builder(LightManager.Type.DIRECTIONAL)
             .color(0.4f, 0.5f, 0.6f)
@@ -120,13 +108,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             .direction(0.5f, 0.3f, 0.5f)
             .build(engine, fillLight)
         scene.addEntity(fillLight)
-        
-        // 1.69.2：使用IndirectLight.Builder创建环境光
-        val ibl = IndirectLight.Builder()
-            .reflections(null) // 实际应加载KTX环境贴图
-            .intensity(50000f)
-            .build(engine)
-        scene.indirectLight = ibl
     }
     
     suspend fun loadModel(filePath: String) = withContext(Dispatchers.IO) {
@@ -136,14 +117,11 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         }
         
         val buffer = readFileToBuffer(filePath)
-        
-        // 1.69.2新API：AssetLoader.createAsset支持更多配置
         filamentAsset = assetLoader.createAsset(buffer)
         
         filamentAsset?.let { asset ->
             resourceLoader.loadResources(asset)
             scene.addEntities(asset.entities)
-            animator = asset.animator
             
             val box = asset.boundingBox
             val halfExtent = box.halfExtent
@@ -173,8 +151,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         val y = (distance / zoom * kotlin.math.sin(rotX)).toFloat()
         val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toFloat()
         
-        camera.position = Float3(x, y, z)
-        camera.lookAt(Float3(0f, 0f, 0f), Float3(0f, 1f, 0f))
+        camera.setPosition(x, y, z)
+        camera.lookAt(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     }
     
     fun addRotation(deltaX: Float, deltaY: Float) {
@@ -195,15 +173,14 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     private fun render(frameTimeNanos: Long) {
-        animator?.apply {
-            if (animationCount > 0) {
-                val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
-                applyAnimation(0, time % getAnimationDuration(0))
-                updateBoneMatrices()
-            }
-        }
-        
         filamentAsset?.let { asset ->
+            val animator = asset.animator
+            if (animator.animationCount > 0) {
+                val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
+                animator.applyAnimation(0, time % animator.getAnimationDuration(0))
+                animator.updateBoneMatrices()
+            }
+            
             val box = asset.boundingBox
             val halfExtent = box.halfExtent
             val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2

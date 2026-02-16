@@ -1,11 +1,10 @@
 package com.example.model3dviewer.model
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
-@Entity(tableName = "recent_models")
+@Serializable
 data class RecentModel(
-    @PrimaryKey val id: Long,
+    val id: Long,
     val name: String,
     val path: String,
     val thumbnailPath: String? = null,

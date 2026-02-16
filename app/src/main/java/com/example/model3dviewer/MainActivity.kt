@@ -38,7 +38,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 1.69.2初始化工具
         Utils.init()
         
         setContentView(R.layout.activity_main)
@@ -55,7 +54,9 @@ class MainActivity : AppCompatActivity() {
         adapter = ModelThumbnailAdapter(
             onItemClick = { model -> loadModel(model.path) },
             onItemLongClick = { model -> 
-                showModelOptions(model)
+                lifecycleScope.launch {
+                    showModelOptions(model)
+                }
                 true
             }
         )
@@ -189,14 +190,16 @@ class MainActivity : AppCompatActivity() {
         loadRecentModels()
     }
     
-    private fun showModelOptions(model: RecentModel) {
+    private suspend fun showModelOptions(model: RecentModel) {
         val popup = PopupMenu(this, recyclerView.findViewWithTag<View>(model.id))
         popup.menuInflater.inflate(R.menu.model_options, popup.menu)
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_delete -> {
-                    recentModelsManager.removeRecentModel(model)
-                    loadRecentModels()
+                    lifecycleScope.launch {
+                        recentModelsManager.removeRecentModel(model)
+                        loadRecentModels()
+                    }
                     true
                 }
                 R.id.action_share -> {
