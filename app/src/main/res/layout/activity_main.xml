@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     android:background="#1A1A1A">
 
-    <android.opengl.GLSurfaceView
+    <SurfaceView
         android:id="@+id/surfaceView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>

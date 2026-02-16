@@ -1,4 +1,3 @@
-// RecentModelsManager.kt
 package com.example.model3dviewer.utils
 
 import android.content.Context
@@ -54,3 +53,4 @@ class RecentModelsManager(private val context: Context) {
         }
     }
 }
+

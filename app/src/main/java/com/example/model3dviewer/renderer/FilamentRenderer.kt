@@ -1,4 +1,3 @@
-// FilamentRenderer.kt
 package com.example.model3dviewer.renderer
 
 import android.content.Context

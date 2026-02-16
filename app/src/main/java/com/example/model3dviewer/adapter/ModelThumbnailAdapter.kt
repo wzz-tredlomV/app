@@ -1,4 +1,3 @@
-// ModelThumbnailAdapter.kt
 package com.example.model3dviewer.adapter
 
 import android.view.LayoutInflater

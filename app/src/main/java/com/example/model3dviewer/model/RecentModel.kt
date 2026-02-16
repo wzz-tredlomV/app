@@ -1,4 +1,3 @@
-// RecentModel.kt
 package com.example.model3dviewer.model
 
 import kotlinx.serialization.Serializable
@@ -13,3 +12,4 @@ data class RecentModel(
     val polygonCount: Int = 0,
     val fileSize: Long = 0
 )
+
