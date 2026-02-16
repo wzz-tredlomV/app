@@ -58,6 +58,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         view.camera = camera
         view.scene = scene
         
+        // 1.69.2: 使用属性设置而非命名参数
         val options = View.DynamicResolutionOptions()
         options.enabled = true
         options.quality = View.QualityLevel.MEDIUM
@@ -67,6 +68,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         view.antiAliasing = View.AntiAliasing.FXAA
         view.toneMapping = View.ToneMapping.ACES
         
+        // 1.69.2: UbershaderProvider只有一个参数
         materialProvider = UbershaderProvider(engine)
         assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
         resourceLoader = ResourceLoader(engine)
@@ -86,6 +88,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             override fun onResized(width: Int, height: Int) {
                 view.viewport = Viewport(0, 0, width, height)
                 val aspect = width.toDouble() / height.toDouble()
+                // 1.69.2: setProjection参数顺序
                 camera.setProjection(45.0, aspect, 0.1, 1000.0, Camera.Fov.VERTICAL)
             }
         }
@@ -115,7 +118,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         scene.addEntity(fillLight)
     }
     
-    suspend fun loadModel(filePath: String) = withContext(Dispatchers.IO) {
+    suspend fun loadModel(filePath: String): Boolean = withContext(Dispatchers.IO) {
         try {
             // 清理旧模型
             filamentAsset?.let { asset ->
@@ -126,31 +129,32 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             
             // 读取文件
             val buffer = readFileToBuffer(filePath)
-                ?: throw IllegalArgumentException("无法读取文件")
+                ?: return@withContext false
             
             // 创建资源
             filamentAsset = assetLoader.createAsset(buffer)
-                ?: throw IllegalArgumentException("无法创建资源")
+                ?: return@withContext false
             
-            filamentInstance = filamentAsset?.getInstance(0)
+            // 1.69.2: getInstance()无参数，获取第一个实例
+            filamentInstance = filamentAsset?.getInstance()
             
-            // 关键：异步加载资源，避免阻塞主线程
-            resourceLoader.asyncLoadResources(filamentAsset!!) { resourceLoader ->
-                // 资源加载完成后添加到场景
-                filamentAsset?.let { asset ->
-                    scene.addEntities(asset.entities)
-                    
-                    // 计算相机距离
-                    val box = asset.boundingBox
-                    val halfExtent = box.halfExtent
-                    val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
-                    updateCamera(size * 1.5f)
-                }
+            // 1.69.2: 使用同步加载，异步API在1.69.2中有问题
+            filamentAsset?.let { asset ->
+                resourceLoader.loadResources(asset)
+                scene.addEntities(asset.entities)
+                
+                // 计算相机距离
+                val box = asset.boundingBox
+                val halfExtent = box.halfExtent
+                val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
+                updateCamera(size * 1.5f)
             }
+            
+            return@withContext true
             
         } catch (e: Exception) {
             e.printStackTrace()
-            throw e
+            return@withContext false
         }
     }
     
@@ -181,8 +185,12 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         val y = (distance / zoom * kotlin.math.sin(rotX)).toDouble()
         val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toDouble()
         
-        camera.setPosition(x, y, z)
-        camera.lookAt(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+        // 1.69.2: 使用lookAt设置相机位置和朝向
+        camera.lookAt(
+            x, y, z,  // eye position
+            0.0, 0.0, 0.0,  // center position
+            0.0, 1.0, 0.0   // up vector
+        )
     }
     
     fun addRotation(deltaX: Float, deltaY: Float) {
@@ -204,6 +212,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     
     private fun render(frameTimeNanos: Long) {
         filamentInstance?.let { instance ->
+            // 1.69.2: 通过instance获取animator
             val animator = instance.animator
             if (animator.animationCount > 0) {
                 val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
