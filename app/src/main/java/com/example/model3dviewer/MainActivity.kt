@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // 1.69.2初始化工具
         Utils.init()
         
         setContentView(R.layout.activity_main)
@@ -231,3 +232,4 @@ class MainActivity : AppCompatActivity() {
         renderer.destroy()
     }
 }
+

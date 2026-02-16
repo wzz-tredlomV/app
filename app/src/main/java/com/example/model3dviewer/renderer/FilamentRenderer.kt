@@ -57,18 +57,22 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         view.camera = camera
         view.scene = scene
         
-        view.dynamicResolutionOptions = View.DynamicResolutionOptions().apply {
-            enabled = true
-            quality = View.QualityLevel.MEDIUM
-        }
+        // 1.69.2新API：动态分辨率
+        view.setDynamicResolutionOptions(
+            View.DynamicResolutionOptions(
+                enabled = true,
+                quality = View.QualityLevel.MEDIUM
+            )
+        )
         
         view.isPostProcessingEnabled = true
         view.antiAliasing = View.AntiAliasing.FXAA
         view.toneMapping = View.ToneMapping.ACES_LEGACY
         
-        materialProvider = UbershaderProvider(engine)
+        // 1.69.2新API：UbershaderProvider构造方式
+        materialProvider = UbershaderProvider(engine, true)
         assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
-        resourceLoader = ResourceLoader(engine)
+        resourceLoader = ResourceLoader(engine, true)
         
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
@@ -79,7 +83,13 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             }
             override fun onResized(width: Int, height: Int) {
                 view.viewport = Viewport(0, 0, width, height)
-                camera.setProjection(45.0, width.toDouble() / height, 0.1, 100.0)
+                camera.setProjection(
+                    Camera.Projection.PERSPECTIVE,
+                    45.0,
+                    width.toDouble() / height,
+                    0.1,
+                    1000.0
+                )
             }
         }
         uiHelper.attachTo(surfaceView)
@@ -92,7 +102,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     private fun setupLighting() {
         val engine = this.engine
         
-        // 创建默认光源
+        // 主光源
         val sunlight = EntityManager.get().create()
         LightManager.Builder(LightManager.Type.DIRECTIONAL)
             .color(1.0f, 0.95f, 0.85f)
@@ -102,6 +112,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             .build(engine, sunlight)
         scene.addEntity(sunlight)
         
+        // 补光
         val fillLight = EntityManager.get().create()
         LightManager.Builder(LightManager.Type.DIRECTIONAL)
             .color(0.4f, 0.5f, 0.6f)
@@ -110,10 +121,12 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             .build(engine, fillLight)
         scene.addEntity(fillLight)
         
-        // 环境光（简化版，实际应加载KTX文件）
-        val ibl = LightManager.Builder(LightManager.Type.AREA)
+        // 1.69.2：使用IndirectLight.Builder创建环境光
+        val ibl = IndirectLight.Builder()
+            .reflections(null) // 实际应加载KTX环境贴图
             .intensity(50000f)
-            .build(engine, EntityManager.get().create())
+            .build(engine)
+        scene.indirectLight = ibl
     }
     
     suspend fun loadModel(filePath: String) = withContext(Dispatchers.IO) {
@@ -123,6 +136,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         }
         
         val buffer = readFileToBuffer(filePath)
+        
+        // 1.69.2新API：AssetLoader.createAsset支持更多配置
         filamentAsset = assetLoader.createAsset(buffer)
         
         filamentAsset?.let { asset ->
@@ -131,7 +146,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             animator = asset.animator
             
             val box = asset.boundingBox
-            val size = length(box.max - box.min)
+            val halfExtent = box.halfExtent
+            val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
             
             updateCamera(size * 1.5f)
         }
@@ -189,7 +205,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         
         filamentAsset?.let { asset ->
             val box = asset.boundingBox
-            val size = length(box.max - box.min)
+            val halfExtent = box.halfExtent
+            val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
             updateCamera(size * 1.5f)
         }
         
@@ -212,6 +229,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         filamentAsset?.let { assetLoader.destroyAsset(it) }
         resourceLoader.destroy()
         assetLoader.destroy()
+        materialProvider.destroy()
         engine.destroyRenderer(renderer)
         engine.destroyView(view)
         engine.destroyScene(scene)
@@ -219,3 +237,4 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         engine.destroy()
     }
 }
+
