@@ -13,7 +13,6 @@ import kotlinx.coroutines.*
 import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.io.FileInputStream
-import java.nio.channels.FileChannel
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -134,6 +133,13 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             return false
         }
         
+        // 检查文件格式
+        val lowerPath = filePath.lowercase()
+        if (!lowerPath.endsWith(".glb") && !lowerPath.endsWith(".gltf")) {
+            isLoading.set(false)
+            throw IllegalArgumentException("不支持的文件格式，仅支持 .glb 或 .gltf")
+        }
+        
         return try {
             withContext(Dispatchers.IO) {
                 val fileSize = getFileSize(filePath)
@@ -141,6 +147,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                     throw IllegalArgumentException("文件过大: ${fileSize / 1024 / 1024}MB, 最大支持${MAX_FILE_SIZE / 1024 / 1024}MB")
                 }
                 
+                // 在主线程清理当前资源
                 withContext(Dispatchers.Main) {
                     clearCurrentAsset()
                 }
@@ -172,6 +179,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                 true
             }
         } catch (e: Exception) {
+            e.printStackTrace()
             false
         } finally {
             isLoading.set(false)
@@ -212,6 +220,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                 }
             }
         } catch (e: Exception) {
+            e.printStackTrace()
             null
         }
     }
@@ -239,9 +248,10 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                         val remaining = fileSize - position
                         val size = minOf(chunkSize, remaining).toInt()
                         
-                        val chunk = channel.map(FileChannel.MapMode.READ_ONLY, position, size.toLong())
+                        // 使用普通读取而非内存映射，避免内存泄漏
                         val bytes = ByteArray(size)
-                        chunk.get(bytes)
+                        val tempBuffer = ByteBuffer.wrap(bytes)
+                        channel.read(tempBuffer)
                         buffer.put(bytes)
                         
                         position += size
@@ -259,37 +269,39 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                 }
             }
         } catch (e: Exception) {
+            e.printStackTrace()
             null
         }
     }
     
     private suspend fun loadResourcesWithTimeout(asset: FilamentAsset, onProgress: (Int) -> Unit) {
         withTimeoutOrNull(LOAD_TIMEOUT) {
+            // 在 IO 线程加载资源
             withContext(Dispatchers.IO) {
                 resourceLoader.loadResources(asset)
+            }
+            
+            // 在主线程操作场景和相机
+            withContext(Dispatchers.Main) {
+                onProgress(90)
+                scene.addEntities(asset.entities)
                 
-                withContext(Dispatchers.Main) {
-                    onProgress(90)
-                    scene.addEntities(asset.entities)
-                    
-                    val box = asset.boundingBox
-                    val halfExtent = box.halfExtent
-                    val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2.0f
-                    updateCamera(size * 1.5f)
-                }
+                val box = asset.boundingBox
+                val halfExtent = box.halfExtent
+                val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2.0f
+                
+                // 直接计算相机位置，避免调用 updateCamera 导致的线程问题
+                val distance = size * 1.5f
+                val rotX = rotationX * Math.PI / 180.0
+                val rotY = rotationY * Math.PI / 180.0
+                
+                val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX))
+                val y = (distance / zoom * kotlin.math.sin(rotX))
+                val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX))
+                
+                camera.lookAt(x, y, z, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
             }
         } ?: throw IllegalStateException("加载资源超时")
-    }
-    
-    private fun updateCamera(distance: Float) {
-        val rotX = rotationX * Math.PI / 180.0
-        val rotY = rotationY * Math.PI / 180.0
-        
-        val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX)).toDouble()
-        val y = (distance / zoom * kotlin.math.sin(rotX)).toDouble()
-        val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toDouble()
-        
-        camera.lookAt(x, y, z, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     }
     
     fun addRotation(deltaX: Float, deltaY: Float) {
@@ -311,7 +323,10 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     private fun render(frameTimeNanos: Long) {
-        filamentInstance.get()?.let { instance ->
+        // 安全获取实例
+        val instance = filamentInstance.get() ?: return
+        
+        try {
             val animator = instance.animator
             if (animator.animationCount > 0) {
                 val duration = animator.getAnimationDuration(0)
@@ -321,6 +336,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                     animator.updateBoneMatrices()
                 }
             }
+        } catch (e: Exception) {
+            // 动画错误不应导致崩溃
         }
         
         swapChain?.let { sc ->

@@ -188,38 +188,39 @@ class MainActivity : AppCompatActivity() {
         loadJob = lifecycleScope.launch {
             val startTime = SystemClock.elapsedRealtime()
             
-            val success = try {
+            // 使用 runCatching 改进错误处理
+            val result = runCatching {
                 renderer.loadModel(path) { progress ->
                     launch(Dispatchers.Main) {
                         progressIndicator.progress = progress
                         progressText.text = "加载中... $progress%"
                     }
                 }
-            } catch (e: Exception) {
-                false
             }
             
             val loadTime = SystemClock.elapsedRealtime() - startTime
-            
             hideProgress()
             
-            if (success) {
-                isModelLoaded = true
-                
-                val model = createRecentModel(path)
-                
-                lifecycleScope.launch {
-                    recentModelsManager.addRecentModel(model)
+            when {
+                result.isSuccess && result.getOrDefault(false) -> {
+                    isModelLoaded = true
+                    val model = createRecentModel(path)
+                    
+                    lifecycleScope.launch {
+                        recentModelsManager.addRecentModel(model)
+                    }
+                    
+                    Toast.makeText(this@MainActivity, "加载成功 (${loadTime}ms)", Toast.LENGTH_SHORT).show()
+                    enterPreviewMode()
                 }
-                
-                Toast.makeText(this@MainActivity, "加载成功 (${loadTime}ms)", Toast.LENGTH_SHORT).show()
-                enterPreviewMode()
-            } else {
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("加载失败")
-                    .setMessage("无法加载模型文件，请确保选择有效的GLB/GLTF文件")
-                    .setPositiveButton("确定", null)
-                    .show()
+                else -> {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "未知错误"
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("加载失败")
+                        .setMessage("无法加载模型: $errorMsg")
+                        .setPositiveButton("确定", null)
+                        .show()
+                }
             }
         }
     }
