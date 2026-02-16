@@ -1,3 +1,4 @@
+// ModelThumbnailAdapter.kt
 package com.example.model3dviewer.adapter
 
 import android.view.LayoutInflater
@@ -12,13 +13,19 @@ import com.bumptech.glide.Glide
 import com.example.model3dviewer.R
 import com.example.model3dviewer.model.RecentModel
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class ModelThumbnailAdapter(
     private val onItemClick: (RecentModel) -> Unit,
-    private val onItemLongClick: (RecentModel) -> Boolean
+    private val onItemLongClick: (RecentModel, View) -> Boolean
 ) : ListAdapter<RecentModel, ModelThumbnailAdapter.ViewHolder>(DiffCallback()) {
+    
+    companion object {
+        private val DATE_FORMATTER = DateTimeFormatter.ofPattern("MM/dd HH:mm")
+            .withZone(ZoneId.systemDefault())
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -42,11 +49,14 @@ class ModelThumbnailAdapter(
             tvDate.text = formatDate(model.lastOpened)
             tvPolyCount.text = if (model.polygonCount > 0) "${model.polygonCount / 1000}K 面" else "未知"
 
+            Glide.with(itemView.context).clear(ivThumbnail)
+            
             if (model.thumbnailPath != null && File(model.thumbnailPath).exists()) {
                 Glide.with(itemView.context)
                     .load(model.thumbnailPath)
                     .centerCrop()
                     .placeholder(R.drawable.placeholder_model)
+                    .error(R.drawable.placeholder_model)
                     .into(ivThumbnail)
             } else {
                 Glide.with(itemView.context)
@@ -56,12 +66,11 @@ class ModelThumbnailAdapter(
             }
 
             itemView.setOnClickListener { onItemClick(model) }
-            itemView.setOnLongClickListener { onItemLongClick(model) }
+            itemView.setOnLongClickListener { onItemLongClick(model, itemView) }
         }
 
         private fun formatDate(timestamp: Long): String {
-            val sdf = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
-            return sdf.format(Date(timestamp))
+            return DATE_FORMATTER.format(Instant.ofEpochMilli(timestamp))
         }
     }
 
@@ -70,3 +79,4 @@ class ModelThumbnailAdapter(
         override fun areContentsTheSame(oldItem: RecentModel, newItem: RecentModel) = oldItem == newItem
     }
 }
+

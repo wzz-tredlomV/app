@@ -1,3 +1,4 @@
+// RecentModelsManager.kt
 package com.example.model3dviewer.utils
 
 import android.content.Context
@@ -6,6 +7,8 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.model3dviewer.model.RecentModel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -16,6 +19,7 @@ class RecentModelsManager(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
     private val KEY_MODELS = stringPreferencesKey("models_list")
     private val MAX_RECENT = 20
+    private val mutex = Mutex()
 
     suspend fun getRecentModels(): List<RecentModel> {
         return try {
@@ -27,7 +31,7 @@ class RecentModelsManager(private val context: Context) {
         }
     }
 
-    suspend fun addRecentModel(model: RecentModel) {
+    suspend fun addRecentModel(model: RecentModel) = mutex.withLock {
         val current = getRecentModels().toMutableList()
         current.removeAll { it.path == model.path }
         current.add(0, model)
@@ -41,7 +45,7 @@ class RecentModelsManager(private val context: Context) {
         }
     }
 
-    suspend fun removeRecentModel(model: RecentModel) {
+    suspend fun removeRecentModel(model: RecentModel) = mutex.withLock {
         val current = getRecentModels().toMutableList()
         current.removeAll { it.id == model.id }
         
@@ -50,4 +54,3 @@ class RecentModelsManager(private val context: Context) {
         }
     }
 }
-

@@ -1,3 +1,4 @@
+// FilamentRenderer.kt
 package com.example.model3dviewer.renderer
 
 import android.content.Context
@@ -14,6 +15,8 @@ import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.io.FileInputStream
 import java.nio.channels.FileChannel
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 class FilamentRenderer(private val context: Context, private val surfaceView: SurfaceView) {
     
@@ -26,28 +29,38 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     private lateinit var resourceLoader: ResourceLoader
     private lateinit var materialProvider: MaterialProvider
     
-    private var filamentAsset: FilamentAsset? = null
-    private var filamentInstance: FilamentInstance? = null
+    private val filamentAsset = AtomicReference<FilamentAsset?>(null)
+    private val filamentInstance = AtomicReference<FilamentInstance?>(null)
     private var swapChain: SwapChain? = null
     
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
     private lateinit var displayHelper: DisplayHelper
     private val choreographer = Choreographer.getInstance()
     
+    @Volatile
     private var rotationX = 0f
+    
+    @Volatile
     private var rotationY = 0f
+    
+    @Volatile
     private var zoom = 1f
     
+    private val isDestroyed = AtomicBoolean(false)
+    private val isLoading = AtomicBoolean(false)
+    
     companion object {
-        const val MAX_FILE_SIZE = 100 * 1024 * 1024L // 100MB限制
-        const val BUFFER_SIZE = 8 * 1024 * 1024 // 8MB缓冲区
-        const val LOAD_TIMEOUT = 120000L // 120秒超时
+        const val MAX_FILE_SIZE = 100 * 1024 * 1024L
+        const val BUFFER_SIZE = 8 * 1024 * 1024
+        const val LOAD_TIMEOUT = 120000L
     }
     
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
-            render(frameTimeNanos)
-            choreographer.postFrameCallback(this)
+            if (!isDestroyed.get()) {
+                render(frameTimeNanos)
+                choreographer.postFrameCallback(this)
+            }
         }
     }
     
@@ -117,53 +130,62 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         scene.addEntity(sunlight)
     }
     
-    suspend fun loadModel(filePath: String, onProgress: (Int) -> Unit = {}): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val fileSize = getFileSize(filePath)
-            if (fileSize > MAX_FILE_SIZE) {
-                throw IllegalArgumentException("文件过大: ${fileSize / 1024 / 1024}MB, 最大支持${MAX_FILE_SIZE / 1024 / 1024}MB")
-            }
-            
-            withContext(Dispatchers.Main) {
-                filamentAsset?.let { asset ->
-                    scene.removeEntities(asset.entities)
-                    assetLoader.destroyAsset(asset)
-                }
-                filamentInstance = null
-                System.gc()
-                Runtime.getRuntime().gc()
-            }
-            
-            onProgress(10)
-            
-            val buffer = if (fileSize > BUFFER_SIZE) {
-                readLargeFile(filePath, onProgress)
-            } else {
-                readSmallFile(filePath)
-            }
-            
-            onProgress(60)
-            
-            buffer ?: return@withContext false
-            
-            val asset = withTimeoutOrNull(LOAD_TIMEOUT) {
-                assetLoader.createAsset(buffer)
-            } ?: throw IllegalStateException("创建资源超时")
-            
-            onProgress(80)
-            
-            filamentAsset = asset
-            filamentInstance = asset.getInstance()
-            
-            loadResourcesWithTimeout(asset, onProgress)
-            
-            onProgress(100)
-            return@withContext true
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return@withContext false
+    suspend fun loadModel(filePath: String, onProgress: (Int) -> Unit): Boolean {
+        if (!isLoading.compareAndSet(false, true)) {
+            return false
         }
+        
+        return try {
+            withContext(Dispatchers.IO) {
+                val fileSize = getFileSize(filePath)
+                if (fileSize > MAX_FILE_SIZE) {
+                    throw IllegalArgumentException("文件过大: ${fileSize / 1024 / 1024}MB, 最大支持${MAX_FILE_SIZE / 1024 / 1024}MB")
+                }
+                
+                withContext(Dispatchers.Main) {
+                    clearCurrentAsset()
+                }
+                
+                onProgress(10)
+                
+                val buffer = if (fileSize > BUFFER_SIZE) {
+                    readLargeFile(filePath, onProgress)
+                } else {
+                    readSmallFile(filePath)?.also { onProgress(30) }
+                }
+                
+                onProgress(60)
+                
+                buffer ?: return@withContext false
+                
+                val asset = withTimeoutOrNull(LOAD_TIMEOUT) {
+                    assetLoader.createAsset(buffer)
+                } ?: throw IllegalStateException("创建资源超时")
+                
+                onProgress(80)
+                
+                filamentAsset.set(asset)
+                filamentInstance.set(asset.getInstance())
+                
+                loadResourcesWithTimeout(asset, onProgress)
+                
+                onProgress(100)
+                true
+            }
+        } catch (e: Exception) {
+            false
+        } finally {
+            isLoading.set(false)
+        }
+    }
+    
+    private suspend fun clearCurrentAsset() {
+        filamentAsset.getAndSet(null)?.let { asset ->
+            scene.removeEntities(asset.entities)
+            assetLoader.destroyAsset(asset)
+        }
+        filamentInstance.set(null)
+        System.gc()
     }
     
     private fun getFileSize(path: String): Long {
@@ -191,7 +213,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             null
         }
     }
@@ -199,43 +220,46 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     private fun readLargeFile(path: String, onProgress: (Int) -> Unit): Buffer? {
         return try {
             val uri = android.net.Uri.parse(path)
-            val parcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
             
-            FileInputStream(parcelFileDescriptor.fileDescriptor).use { fis ->
-                val channel = fis.channel
-                val fileSize = channel.size()
-                
-                val buffer = ByteBuffer.allocateDirect(fileSize.toInt())
-                buffer.order(java.nio.ByteOrder.nativeOrder())
-                
-                var position = 0L
-                val chunkSize = BUFFER_SIZE.toLong()
-                
-                while (position < fileSize) {
-                    val remaining = fileSize - position
-                    val size = minOf(chunkSize, remaining).toInt()
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                FileInputStream(pfd.fileDescriptor).use { fis ->
+                    val channel = fis.channel
+                    val fileSize = channel.size()
                     
-                    val chunk = channel.map(FileChannel.MapMode.READ_ONLY, position, size.toLong())
-                    val bytes = ByteArray(size)
-                    chunk.get(bytes)
-                    buffer.put(bytes)
-                    
-                    position += size
-                    
-                    val progress = 10 + (position * 50 / fileSize).toInt()
-                    onProgress(progress.coerceIn(10, 60))
-                    
-                    if (position % (chunkSize * 2) == 0L) {
-                        Thread.yield()
+                    if (fileSize > Int.MAX_VALUE) {
+                        return null
                     }
+                    
+                    val buffer = ByteBuffer.allocateDirect(fileSize.toInt())
+                    buffer.order(java.nio.ByteOrder.nativeOrder())
+                    
+                    var position = 0L
+                    val chunkSize = BUFFER_SIZE.toLong()
+                    
+                    while (position < fileSize) {
+                        val remaining = fileSize - position
+                        val size = minOf(chunkSize, remaining).toInt()
+                        
+                        val chunk = channel.map(FileChannel.MapMode.READ_ONLY, position, size.toLong())
+                        val bytes = ByteArray(size)
+                        chunk.get(bytes)
+                        buffer.put(bytes)
+                        
+                        position += size
+                        
+                        val progress = 10 + (position * 50 / fileSize).toInt()
+                        onProgress(progress.coerceIn(10, 60))
+                        
+                        if (position % (chunkSize * 2) == 0L) {
+                            Thread.yield()
+                        }
+                    }
+                    
+                    buffer.flip()
+                    buffer
                 }
-                
-                buffer.flip()
-                parcelFileDescriptor.close()
-                buffer
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             null
         }
     }
@@ -273,6 +297,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         rotationX += deltaX
         rotationY += deltaY
         rotationX = rotationX.coerceIn(-90f, 90f)
+        rotationY = rotationY % 360f
     }
     
     fun applyZoom(factor: Float) {
@@ -287,12 +312,15 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     private fun render(frameTimeNanos: Long) {
-        filamentInstance?.let { instance ->
+        filamentInstance.get()?.let { instance ->
             val animator = instance.animator
             if (animator.animationCount > 0) {
-                val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
-                animator.applyAnimation(0, time % animator.getAnimationDuration(0))
-                animator.updateBoneMatrices()
+                val duration = animator.getAnimationDuration(0)
+                if (duration > 0) {
+                    val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
+                    animator.applyAnimation(0, time % duration)
+                    animator.updateBoneMatrices()
+                }
             }
         }
         
@@ -313,18 +341,20 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     fun destroy() {
-        choreographer.removeFrameCallback(frameCallback)
-        uiHelper.detach()
-        swapChain?.let { engine.destroySwapChain(it) }
-        filamentAsset?.let { assetLoader.destroyAsset(it) }
-        resourceLoader.destroy()
-        assetLoader.destroy()
-        materialProvider.destroy()
-        engine.destroyRenderer(renderer)
-        engine.destroyView(view)
-        engine.destroyScene(scene)
-        engine.destroyCameraComponent(camera.entity)
-        engine.destroy()
+        if (isDestroyed.compareAndSet(false, true)) {
+            choreographer.removeFrameCallback(frameCallback)
+            uiHelper.detach()
+            swapChain?.let { engine.destroySwapChain(it) }
+            filamentAsset.get()?.let { assetLoader.destroyAsset(it) }
+            resourceLoader.destroy()
+            assetLoader.destroy()
+            materialProvider.destroy()
+            engine.destroyRenderer(renderer)
+            engine.destroyView(view)
+            engine.destroyScene(scene)
+            engine.destroyCameraComponent(camera.entity)
+            engine.destroy()
+        }
     }
 }
 
