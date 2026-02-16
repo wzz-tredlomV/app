@@ -16,6 +16,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         
+        // 大内存支持
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -33,6 +34,11 @@ android {
                 "proguard-rules.pro"
             )
         }
+        debug {
+            // 调试模式也启用优化
+            isMinifyEnabled = false
+            isDebuggable = true
+        }
     }
     
     compileOptions {
@@ -45,6 +51,9 @@ android {
     }
     
     packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
@@ -75,8 +84,6 @@ dependencies {
     
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
-    
-    // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     
     testImplementation("junit:junit:4.13.2")

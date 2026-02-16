@@ -1,18 +1,15 @@
 package com.example.model3dviewer
 
 import android.app.Activity
+import android.app.ProgressDialog
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
+import android.os.SystemClock
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -22,9 +19,7 @@ import com.example.model3dviewer.renderer.FilamentRenderer
 import com.example.model3dviewer.utils.RecentModelsManager
 import com.google.android.filament.utils.Utils
 import com.google.android.material.floatingactionbutton.FloatingActionButton
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity() {
     
@@ -35,10 +30,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var recentModelsManager: RecentModelsManager
     
     private var isModelLoaded = false
+    private var loadJob: Job? = null
+    private var progressDialog: ProgressDialog? = null
     
     companion object {
         const val REQUEST_CODE_PICK_MODEL = 1001
-        const val REQUEST_CODE_PERMISSIONS = 1002
         const val GRID_SPAN_COUNT = 3
     }
 
@@ -48,30 +44,9 @@ class MainActivity : AppCompatActivity() {
         Utils.init()
         
         setContentView(R.layout.activity_main)
-        
-        checkPermissions()
         setupUI()
         setupRenderer()
         loadRecentModels()
-    }
-    
-    private fun checkPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+ 使用MANAGE_EXTERNAL_STORAGE或SAF
-            return
-        }
-        
-        val permissions = arrayOf(
-            android.Manifest.permission.READ_EXTERNAL_STORAGE
-        )
-        
-        val needPermissions = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        
-        if (needPermissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, needPermissions.toTypedArray(), REQUEST_CODE_PERMISSIONS)
-        }
     }
     
     private fun setupUI() {
@@ -95,6 +70,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
+            cancelLoad()
             exitPreviewMode()
         }
         
@@ -187,7 +163,6 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_CODE_PICK_MODEL && resultCode == Activity.RESULT_OK) {
             data?.data?.let { uri ->
-                // 持久化URI权限
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 loadModel(uri.toString())
             }
@@ -195,39 +170,84 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun loadModel(path: String) {
-        lifecycleScope.launch(Dispatchers.IO) {
+        // 取消之前的加载
+        cancelLoad()
+        
+        // 显示进度对话框
+        progressDialog = ProgressDialog(this).apply {
+            setMessage("加载模型中...")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            setCancelable(true)
+            setButton(ProgressDialog.BUTTON_NEGATIVE, "取消") { _, _ ->
+                cancelLoad()
+            }
+            show()
+        }
+        
+        loadJob = lifecycleScope.launch(Dispatchers.IO) {
+            val startTime = SystemClock.elapsedRealtime()
+            
             try {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "正在加载模型...", Toast.LENGTH_SHORT).show()
+                val success = renderer.loadModel(path) { progress ->
+                    withContext(Dispatchers.Main) {
+                        progressDialog?.progress = progress
+                    }
                 }
                 
-                renderer.loadModel(path)
-                isModelLoaded = true
-                
-                val model = RecentModel(
-                    id = System.currentTimeMillis(),
-                    name = path.substringAfterLast("/").substringBefore("?"),
-                    path = path,
-                    lastOpened = System.currentTimeMillis(),
-                    polygonCount = 0
-                )
-                recentModelsManager.addRecentModel(model)
+                val loadTime = SystemClock.elapsedRealtime() - startTime
                 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "模型加载成功", Toast.LENGTH_SHORT).show()
-                    enterPreviewMode()
+                    progressDialog?.dismiss()
+                    progressDialog = null
+                    
+                    if (success) {
+                        isModelLoaded = true
+                        
+                        val model = RecentModel(
+                            id = System.currentTimeMillis(),
+                            name = path.substringAfterLast("/").substringBefore("?"),
+                            path = path,
+                            lastOpened = System.currentTimeMillis(),
+                            polygonCount = 0
+                        )
+                        
+                        lifecycleScope.launch {
+                            recentModelsManager.addRecentModel(model)
+                        }
+                        
+                        Toast.makeText(this@MainActivity, 
+                            "加载成功 (${loadTime}ms)", Toast.LENGTH_SHORT).show()
+                        enterPreviewMode()
+                    } else {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("加载失败")
+                            .setMessage("无法加载模型文件，请确保选择有效的GLB/GLTF文件")
+                            .setPositiveButton("确定", null)
+                            .show()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                
                 withContext(Dispatchers.Main) {
+                    progressDialog?.dismiss()
+                    progressDialog = null
+                    
                     AlertDialog.Builder(this@MainActivity)
-                        .setTitle("加载失败")
-                        .setMessage("错误: ${e.message}\n\n请确保选择有效的GLB/GLTF文件")
+                        .setTitle("加载错误")
+                        .setMessage("错误: ${e.message}\n\n建议:\n1. 尝试更小的模型文件\n2. 检查文件是否损坏\n3. 重启应用后重试")
                         .setPositiveButton("确定", null)
                         .show()
                 }
             }
         }
+    }
+    
+    private fun cancelLoad() {
+        loadJob?.cancel()
+        loadJob = null
+        progressDialog?.dismiss()
+        progressDialog = null
     }
     
     private fun enterPreviewMode() {
@@ -290,6 +310,7 @@ class MainActivity : AppCompatActivity() {
     
     override fun onPause() {
         super.onPause()
+        cancelLoad()
         try {
             renderer.onPause()
         } catch (e: Exception) {
@@ -299,6 +320,7 @@ class MainActivity : AppCompatActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
+        cancelLoad()
         try {
             renderer.destroy()
         } catch (e: Exception) {
@@ -306,3 +328,4 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+
