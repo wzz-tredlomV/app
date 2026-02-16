@@ -37,9 +37,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     private var rotationY = 0f
     private var zoom = 1f
     
-    // 相机变换矩阵
-    private val cameraTransform = FloatArray(16)
-    
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             render(frameTimeNanos)
@@ -119,66 +116,73 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     suspend fun loadModel(filePath: String) = withContext(Dispatchers.IO) {
-        filamentAsset?.let { asset ->
-            scene.removeEntities(asset.entities)
-            assetLoader.destroyAsset(asset)
-        }
-        filamentInstance = null
-        
-        val buffer = readFileToBuffer(filePath)
-        filamentAsset = assetLoader.createAsset(buffer)
-        
-        filamentAsset?.let { asset ->
-            // 修复1：getInstance() 不需要参数
-            filamentInstance = asset.getInstance()
-            resourceLoader.loadResources(asset)
-            scene.addEntities(asset.entities)
+        try {
+            // 清理旧模型
+            filamentAsset?.let { asset ->
+                scene.removeEntities(asset.entities)
+                assetLoader.destroyAsset(asset)
+            }
+            filamentInstance = null
             
-            val box = asset.boundingBox
-            val halfExtent = box.halfExtent
-            val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
+            // 读取文件
+            val buffer = readFileToBuffer(filePath)
+                ?: throw IllegalArgumentException("无法读取文件")
             
-            updateCamera(size * 1.5f)
+            // 创建资源
+            filamentAsset = assetLoader.createAsset(buffer)
+                ?: throw IllegalArgumentException("无法创建资源")
+            
+            filamentInstance = filamentAsset?.getInstance(0)
+            
+            // 关键：异步加载资源，避免阻塞主线程
+            resourceLoader.asyncLoadResources(filamentAsset!!) { resourceLoader ->
+                // 资源加载完成后添加到场景
+                filamentAsset?.let { asset ->
+                    scene.addEntities(asset.entities)
+                    
+                    // 计算相机距离
+                    val box = asset.boundingBox
+                    val halfExtent = box.halfExtent
+                    val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
+                    updateCamera(size * 1.5f)
+                }
+            }
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+            throw e
         }
     }
     
-    private fun readFileToBuffer(path: String): Buffer {
-        val uri = android.net.Uri.parse(path)
-        return context.contentResolver.openInputStream(uri)?.use { stream ->
-            val bytes = stream.readBytes()
-            ByteBuffer.allocateDirect(bytes.size).apply {
-                order(java.nio.ByteOrder.nativeOrder())
-                put(bytes)
-                flip()
+    private fun readFileToBuffer(path: String): Buffer? {
+        return try {
+            val uri = android.net.Uri.parse(path)
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val bytes = stream.readBytes()
+                if (bytes.isEmpty()) return null
+                
+                ByteBuffer.allocateDirect(bytes.size).apply {
+                    order(java.nio.ByteOrder.nativeOrder())
+                    put(bytes)
+                    flip()
+                }
             }
-        } ?: throw IllegalArgumentException("无法读取文件: $path")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
     
     private fun updateCamera(distance: Float) {
         val rotX = rotationX * Math.PI / 180.0
         val rotY = rotationY * Math.PI / 180.0
         
-        val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX)).toFloat()
-        val y = (distance / zoom * kotlin.math.sin(rotX)).toFloat()
-        val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toFloat()
+        val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX)).toDouble()
+        val y = (distance / zoom * kotlin.math.sin(rotX)).toDouble()
+        val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toDouble()
         
-        // 修复2：使用 lookAt 矩阵设置相机位置和朝向
-        // lookAt(eye, center, up) - 计算视图矩阵
-        val eye = floatArrayOf(x, y, z)
-        val center = floatArrayOf(0.0f, 0.0f, 0.0f)
-        val up = floatArrayOf(0.0f, 1.0f, 0.0f)
-        
-        // 计算 lookAt 矩阵（视图矩阵的逆）
-        android.opengl.Matrix.setLookAtM(cameraTransform, 0, 
-            eye[0], eye[1], eye[2],
-            center[0], center[1], center[2],
-            up[0], up[1], up[2]
-        )
-        
-        // 通过 TransformManager 设置相机实体的变换
-        val transformManager = engine.transformManager
-        val cameraInstance = transformManager.getInstance(camera.entity)
-        transformManager.setTransform(cameraInstance, cameraTransform)
+        camera.setPosition(x, y, z)
+        camera.lookAt(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     }
     
     fun addRotation(deltaX: Float, deltaY: Float) {
@@ -205,13 +209,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                 val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
                 animator.applyAnimation(0, time % animator.getAnimationDuration(0))
                 animator.updateBoneMatrices()
-            }
-            
-            filamentAsset?.let { asset ->
-                val box = asset.boundingBox
-                val halfExtent = box.halfExtent
-                val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
-                updateCamera(size * 1.5f)
             }
         }
         
