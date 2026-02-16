@@ -26,7 +26,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     private lateinit var materialProvider: MaterialProvider
     
     private var filamentAsset: FilamentAsset? = null
-    private var animator: Animator? = null
     
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
     private lateinit var displayHelper: DisplayHelper
@@ -57,11 +56,11 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         view.camera = camera
         view.scene = scene
         
-        // 动态分辨率
-        view.dynamicResolutionOptions = View.DynamicResolutionOptions(
-            enabled = true,
-            quality = View.QualityLevel.MEDIUM
-        )
+        // 1.69.2 API: 直接设置属性，不使用命名参数
+        val options = View.DynamicResolutionOptions()
+        options.enabled = true
+        options.quality = View.QualityLevel.MEDIUM
+        view.dynamicResolutionOptions = options
         
         view.isPostProcessingEnabled = true
         view.antiAliasing = View.AntiAliasing.FXAA
@@ -73,15 +72,18 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
-                renderer.setSurface(surface)
+                // 1.69.2 API: 使用engine的surface方法
+                renderer.setDisplaySurface(displayHelper.display, surface)
             }
             override fun onDetachedFromSurface() {
-                renderer.clearSurface()
+                // 1.69.2 API: 使用engine的surface方法
+                renderer.flushAndWait()
             }
             override fun onResized(width: Int, height: Int) {
                 view.viewport = Viewport(0, 0, width, height)
                 val aspect = width.toDouble() / height.toDouble()
-                camera.setProjection(45.0, aspect, 0.1, 1000.0, Camera.Fov.VERTICAL)
+                // 1.69.2 API: 使用正确的setProjection重载
+                camera.setProjection(Camera.Projection.PERSPECTIVE, 45.0, aspect, 0.1, 1000.0)
             }
         }
         uiHelper.attachTo(surfaceView)
@@ -151,7 +153,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         val y = (distance / zoom * kotlin.math.sin(rotX)).toFloat()
         val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toFloat()
         
-        camera.setPosition(x, y, z)
+        // 1.69.2 API: 使用正确的setPosition重载
+        camera.setPosition(x.toDouble(), y.toDouble(), z.toDouble())
         camera.lookAt(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     }
     
@@ -174,6 +177,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     
     private fun render(frameTimeNanos: Long) {
         filamentAsset?.let { asset ->
+            // 1.69.2 API: 正确获取animator
             val animator = asset.animator
             if (animator.animationCount > 0) {
                 val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
