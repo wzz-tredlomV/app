@@ -26,6 +26,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     private lateinit var materialProvider: MaterialProvider
     
     private var filamentAsset: FilamentAsset? = null
+    private var filamentInstance: FilamentInstance? = null
+    private var swapChain: SwapChain? = null
     
     private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
     private lateinit var displayHelper: DisplayHelper
@@ -71,16 +73,19 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
-                // 1.69.2: 使用底层API设置surface
-                engine.setSurface(surface)
+                swapChain?.let { engine.destroySwapChain(it) }
+                swapChain = engine.createSwapChain(surface)
             }
             override fun onDetachedFromSurface() {
+                swapChain?.let { 
+                    engine.destroySwapChain(it)
+                    swapChain = null
+                }
                 engine.flushAndWait()
             }
             override fun onResized(width: Int, height: Int) {
                 view.viewport = Viewport(0, 0, width, height)
                 val aspect = width.toDouble() / height.toDouble()
-                // 1.69.2: 正确的setProjection调用
                 camera.setProjection(45.0, aspect, 0.1, 1000.0, Camera.Fov.VERTICAL)
             }
         }
@@ -115,11 +120,13 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             scene.removeEntities(asset.entities)
             assetLoader.destroyAsset(asset)
         }
+        filamentInstance = null
         
         val buffer = readFileToBuffer(filePath)
         filamentAsset = assetLoader.createAsset(buffer)
         
         filamentAsset?.let { asset ->
+            filamentInstance = asset.getInstance(0)
             resourceLoader.loadResources(asset)
             scene.addEntities(asset.entities)
             
@@ -147,12 +154,11 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         val rotX = rotationX * Math.PI / 180.0
         val rotY = rotationY * Math.PI / 180.0
         
-        val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX)).toFloat()
-        val y = (distance / zoom * kotlin.math.sin(rotX)).toFloat()
-        val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toFloat()
+        val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX)).toDouble()
+        val y = (distance / zoom * kotlin.math.sin(rotX)).toDouble()
+        val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toDouble()
         
-        // 1.69.2: 使用setPosition(x, y, z)重载
-        camera.setPosition(x.toDouble(), y.toDouble(), z.toDouble())
+        camera.setPosition(x, y, z)
         camera.lookAt(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     }
     
@@ -174,23 +180,27 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     private fun render(frameTimeNanos: Long) {
-        filamentAsset?.let { asset ->
-            // 1.69.2: 获取animator实例
-            val animator = asset.animator
+        filamentInstance?.let { instance ->
+            val animator = instance.animator
             if (animator.animationCount > 0) {
                 val time = (frameTimeNanos / 1_000_000_000.0).toFloat()
                 animator.applyAnimation(0, time % animator.getAnimationDuration(0))
                 animator.updateBoneMatrices()
             }
             
-            val box = asset.boundingBox
-            val halfExtent = box.halfExtent
-            val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
-            updateCamera(size * 1.5f)
+            filamentAsset?.let { asset ->
+                val box = asset.boundingBox
+                val halfExtent = box.halfExtent
+                val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
+                updateCamera(size * 1.5f)
+            }
         }
         
-        if (uiHelper.isReadyToRender) {
-            renderer.render(view)
+        swapChain?.let { sc ->
+            if (renderer.beginFrame(sc, frameTimeNanos)) {
+                renderer.render(view)
+                renderer.endFrame()
+            }
         }
     }
     
@@ -205,6 +215,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     fun destroy() {
         choreographer.removeFrameCallback(frameCallback)
         uiHelper.detach()
+        swapChain?.let { engine.destroySwapChain(it) }
         filamentAsset?.let { assetLoader.destroyAsset(it) }
         resourceLoader.destroy()
         assetLoader.destroy()
