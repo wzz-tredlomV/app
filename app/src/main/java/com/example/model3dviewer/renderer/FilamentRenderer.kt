@@ -37,6 +37,9 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     private var rotationY = 0f
     private var zoom = 1f
     
+    // 相机变换矩阵
+    private val cameraTransform = FloatArray(16)
+    
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             render(frameTimeNanos)
@@ -126,7 +129,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         filamentAsset = assetLoader.createAsset(buffer)
         
         filamentAsset?.let { asset ->
-            filamentInstance = asset.getInstance(0)
+            // 修复1：getInstance() 不需要参数
+            filamentInstance = asset.getInstance()
             resourceLoader.loadResources(asset)
             scene.addEntities(asset.entities)
             
@@ -154,12 +158,27 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         val rotX = rotationX * Math.PI / 180.0
         val rotY = rotationY * Math.PI / 180.0
         
-        val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX)).toDouble()
-        val y = (distance / zoom * kotlin.math.sin(rotX)).toDouble()
-        val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toDouble()
+        val x = (distance / zoom * kotlin.math.sin(rotY) * kotlin.math.cos(rotX)).toFloat()
+        val y = (distance / zoom * kotlin.math.sin(rotX)).toFloat()
+        val z = (distance / zoom * kotlin.math.cos(rotY) * kotlin.math.cos(rotX)).toFloat()
         
-        camera.setPosition(x, y, z)
-        camera.lookAt(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+        // 修复2：使用 lookAt 矩阵设置相机位置和朝向
+        // lookAt(eye, center, up) - 计算视图矩阵
+        val eye = floatArrayOf(x, y, z)
+        val center = floatArrayOf(0.0f, 0.0f, 0.0f)
+        val up = floatArrayOf(0.0f, 1.0f, 0.0f)
+        
+        // 计算 lookAt 矩阵（视图矩阵的逆）
+        android.opengl.Matrix.setLookAtM(cameraTransform, 0, 
+            eye[0], eye[1], eye[2],
+            center[0], center[1], center[2],
+            up[0], up[1], up[2]
+        )
+        
+        // 通过 TransformManager 设置相机实体的变换
+        val transformManager = engine.transformManager
+        val cameraInstance = transformManager.getInstance(camera.entity)
+        transformManager.setTransform(cameraInstance, cameraTransform)
     }
     
     fun addRotation(deltaX: Float, deltaY: Float) {
@@ -227,4 +246,3 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         engine.destroy()
     }
 }
-
