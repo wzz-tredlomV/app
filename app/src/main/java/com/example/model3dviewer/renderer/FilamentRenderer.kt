@@ -12,7 +12,6 @@ import com.google.android.filament.utils.*
 import kotlinx.coroutines.*
 import java.nio.Buffer
 import java.nio.ByteBuffer
-import java.io.File
 import java.io.FileInputStream
 import java.nio.channels.FileChannel
 
@@ -39,9 +38,8 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     private var rotationY = 0f
     private var zoom = 1f
     
-    // 大文件分块读取配置
     companion object {
-        const val MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB限制
+        const val MAX_FILE_SIZE = 100 * 1024 * 1024L // 100MB限制
         const val BUFFER_SIZE = 8 * 1024 * 1024 // 8MB缓冲区
         const val LOAD_TIMEOUT = 120000L // 120秒超时
     }
@@ -58,7 +56,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     private fun setupFilament() {
-        // 大内存配置
         System.setProperty("filament.memory.pool-size", "64")
         System.setProperty("filament.memory.warn-threshold", "0.8")
         
@@ -73,18 +70,12 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         
         val options = View.DynamicResolutionOptions()
         options.enabled = true
-        options.quality = View.QualityLevel.LOW // 大文件使用低质量动态分辨率
-        options.minScale = 0.5f
-        options.maxScale = 1.0f
+        options.quality = View.QualityLevel.LOW
         view.dynamicResolutionOptions = options
         
-        // 性能优化设置
-        view.isPostProcessingEnabled = false // 禁用后处理提升性能
-        view.antiAliasing = View.AntiAliasing.NONE // 禁用抗锯齿
-        view.toneMapping = View.ToneMapping.LINEAR // 简单色调映射
-        
-        // 层级剔除
-        view.setScreenSpaceRefractionEnabled(false)
+        view.isPostProcessingEnabled = false
+        view.antiAliasing = View.AntiAliasing.NONE
+        view.toneMapping = View.ToneMapping.LINEAR
         
         materialProvider = UbershaderProvider(engine)
         assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
@@ -116,41 +107,35 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     private fun setupLighting() {
-        // 简化光照，减少计算
         val sunlight = EntityManager.get().create()
         LightManager.Builder(LightManager.Type.DIRECTIONAL)
             .color(1.0f, 1.0f, 1.0f)
             .intensity(50000.0f)
             .direction(0.0f, -1.0f, 0.0f)
-            .castShadows(false) // 禁用阴影提升性能
+            .castShadows(false)
             .build(engine, sunlight)
         scene.addEntity(sunlight)
     }
     
-    // 大文件加载入口
     suspend fun loadModel(filePath: String, onProgress: (Int) -> Unit = {}): Boolean = withContext(Dispatchers.IO) {
         try {
-            // 检查文件大小
             val fileSize = getFileSize(filePath)
             if (fileSize > MAX_FILE_SIZE) {
                 throw IllegalArgumentException("文件过大: ${fileSize / 1024 / 1024}MB, 最大支持${MAX_FILE_SIZE / 1024 / 1024}MB")
             }
             
-            // 清理旧模型
             withContext(Dispatchers.Main) {
                 filamentAsset?.let { asset ->
                     scene.removeEntities(asset.entities)
                     assetLoader.destroyAsset(asset)
                 }
                 filamentInstance = null
-                // 强制垃圾回收
                 System.gc()
                 Runtime.getRuntime().gc()
             }
             
             onProgress(10)
             
-            // 分块读取大文件
             val buffer = if (fileSize > BUFFER_SIZE) {
                 readLargeFile(filePath, onProgress)
             } else {
@@ -161,7 +146,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             
             buffer ?: return@withContext false
             
-            // 超时保护创建资源
             val asset = withTimeoutOrNull(LOAD_TIMEOUT) {
                 assetLoader.createAsset(buffer)
             } ?: throw IllegalStateException("创建资源超时")
@@ -171,7 +155,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             filamentAsset = asset
             filamentInstance = asset.getInstance()
             
-            // 分步加载资源，避免阻塞
             loadResourcesWithTimeout(asset, onProgress)
             
             onProgress(100)
@@ -188,13 +171,12 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             val uri = android.net.Uri.parse(path)
             context.contentResolver.openFileDescriptor(uri, "r")?.use {
                 it.statSize
-            } ?: 0
+            } ?: 0L
         } catch (e: Exception) {
-            0
+            0L
         }
     }
     
-    // 小文件快速读取
     private fun readSmallFile(path: String): Buffer? {
         return try {
             val uri = android.net.Uri.parse(path)
@@ -214,7 +196,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         }
     }
     
-    // 大文件分块内存映射读取
     private fun readLargeFile(path: String, onProgress: (Int) -> Unit): Buffer? {
         return try {
             val uri = android.net.Uri.parse(path)
@@ -224,12 +205,11 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                 val channel = fis.channel
                 val fileSize = channel.size()
                 
-                // 使用内存映射，避免一次性加载
                 val buffer = ByteBuffer.allocateDirect(fileSize.toInt())
                 buffer.order(java.nio.ByteOrder.nativeOrder())
                 
                 var position = 0L
-                val chunkSize = BUFFER_SIZE
+                val chunkSize = BUFFER_SIZE.toLong()
                 
                 while (position < fileSize) {
                     val remaining = fileSize - position
@@ -242,11 +222,9 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                     
                     position += size
                     
-                    // 更新进度
                     val progress = 10 + (position * 50 / fileSize).toInt()
                     onProgress(progress.coerceIn(10, 60))
                     
-                    // 每读取一块让出时间片，避免阻塞
                     if (position % (chunkSize * 2) == 0L) {
                         Thread.yield()
                     }
@@ -262,29 +240,24 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         }
     }
     
-    // 带超时的资源加载
     private suspend fun loadResourcesWithTimeout(asset: FilamentAsset, onProgress: (Int) -> Unit) {
         withTimeoutOrNull(LOAD_TIMEOUT) {
             withContext(Dispatchers.IO) {
-                // 分步加载，每步检查取消
                 resourceLoader.loadResources(asset)
                 
-                // 切换到主线程添加实体
                 withContext(Dispatchers.Main) {
                     onProgress(90)
                     scene.addEntities(asset.entities)
                     
-                    // 计算相机距离
                     val box = asset.boundingBox
                     val halfExtent = box.halfExtent
-                    val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2
+                    val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2.0f
                     updateCamera(size * 1.5f)
                 }
             }
         } ?: throw IllegalStateException("加载资源超时")
     }
     
-    // 相机控制
     private fun updateCamera(distance: Float) {
         val rotX = rotationX * Math.PI / 180.0
         val rotY = rotationY * Math.PI / 180.0
@@ -311,19 +284,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         rotationX = 0f
         rotationY = 0f
         zoom = 1f
-    }
-    
-    // LOD控制
-    fun setLODLevel(level: Int) {
-        filamentAsset?.let { asset ->
-            // 根据距离设置LOD
-            for (entity in asset.entities) {
-                val renderable = engine.renderableManager.getInstance(entity)
-                if (renderable != 0) {
-                    engine.renderableManager.setLODRange(renderable, level, level)
-                }
-            }
-        }
     }
     
     private fun render(frameTimeNanos: Long) {

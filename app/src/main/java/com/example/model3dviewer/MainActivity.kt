@@ -57,9 +57,7 @@ class MainActivity : AppCompatActivity() {
         adapter = ModelThumbnailAdapter(
             onItemClick = { model -> loadModel(model.path) },
             onItemLongClick = { model -> 
-                lifecycleScope.launch {
-                    showModelOptions(model)
-                }
+                showModelOptions(model)
                 true
             }
         )
@@ -170,10 +168,8 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun loadModel(path: String) {
-        // 取消之前的加载
         cancelLoad()
         
-        // 显示进度对话框
         progressDialog = ProgressDialog(this).apply {
             setMessage("加载模型中...")
             setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
@@ -189,7 +185,7 @@ class MainActivity : AppCompatActivity() {
             
             try {
                 val success = renderer.loadModel(path) { progress ->
-                    withContext(Dispatchers.Main) {
+                    lifecycleScope.launch(Dispatchers.Main) {
                         progressDialog?.progress = progress
                     }
                 }
@@ -264,8 +260,17 @@ class MainActivity : AppCompatActivity() {
         loadRecentModels()
     }
     
-    private suspend fun showModelOptions(model: RecentModel) {
-        val popup = PopupMenu(this, recyclerView.findViewWithTag<View>(model.id) ?: return)
+    private fun showModelOptions(model: RecentModel) {
+        val view = recyclerView.findViewWithTag<View>(model.id)
+        if (view == null) {
+            lifecycleScope.launch {
+                recentModelsManager.removeRecentModel(model)
+                loadRecentModels()
+            }
+            return
+        }
+        
+        val popup = PopupMenu(this, view)
         popup.menuInflater.inflate(R.menu.model_options, popup.menu)
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
