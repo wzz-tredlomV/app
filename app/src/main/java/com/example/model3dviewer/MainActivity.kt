@@ -2,11 +2,17 @@ package com.example.model3dviewer
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.*
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -32,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     
     companion object {
         const val REQUEST_CODE_PICK_MODEL = 1001
+        const val REQUEST_CODE_PERMISSIONS = 1002
         const val GRID_SPAN_COUNT = 3
     }
 
@@ -41,9 +48,30 @@ class MainActivity : AppCompatActivity() {
         Utils.init()
         
         setContentView(R.layout.activity_main)
+        
+        checkPermissions()
         setupUI()
         setupRenderer()
         loadRecentModels()
+    }
+    
+    private fun checkPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+ 使用MANAGE_EXTERNAL_STORAGE或SAF
+            return
+        }
+        
+        val permissions = arrayOf(
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        )
+        
+        val needPermissions = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        
+        if (needPermissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, needPermissions.toTypedArray(), REQUEST_CODE_PERMISSIONS)
+        }
     }
     
     private fun setupUI() {
@@ -78,7 +106,13 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupRenderer() {
-        renderer = FilamentRenderer(this, surfaceView)
+        try {
+            renderer = FilamentRenderer(this, surfaceView)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "初始化渲染器失败: ${e.message}", Toast.LENGTH_LONG).show()
+            finish()
+        }
     }
     
     private fun setupTouchControls() {
@@ -114,9 +148,14 @@ class MainActivity : AppCompatActivity() {
     private fun loadRecentModels() {
         recentModelsManager = RecentModelsManager(this)
         lifecycleScope.launch {
-            val models = recentModelsManager.getRecentModels()
-            adapter.submitList(models)
-            updateEmptyState(models.isEmpty())
+            try {
+                val models = recentModelsManager.getRecentModels()
+                adapter.submitList(models)
+                updateEmptyState(models.isEmpty())
+            } catch (e: Exception) {
+                e.printStackTrace()
+                updateEmptyState(true)
+            }
         }
     }
     
@@ -126,17 +165,21 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun openFilePicker() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                "model/gltf-binary",
-                "model/gltf+json",
-                "model/obj",
-                "application/octet-stream"
-            ))
+        try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                    "model/gltf-binary",
+                    "model/gltf+json",
+                    "application/octet-stream"
+                ))
+            }
+            startActivityForResult(intent, REQUEST_CODE_PICK_MODEL)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "无法打开文件选择器: ${e.message}", Toast.LENGTH_LONG).show()
         }
-        startActivityForResult(intent, REQUEST_CODE_PICK_MODEL)
     }
     
     @Deprecated("Deprecated in Java")
@@ -144,6 +187,8 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_CODE_PICK_MODEL && resultCode == Activity.RESULT_OK) {
             data?.data?.let { uri ->
+                // 持久化URI权限
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 loadModel(uri.toString())
             }
         }
@@ -152,12 +197,16 @@ class MainActivity : AppCompatActivity() {
     private fun loadModel(path: String) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "正在加载模型...", Toast.LENGTH_SHORT).show()
+                }
+                
                 renderer.loadModel(path)
                 isModelLoaded = true
                 
                 val model = RecentModel(
                     id = System.currentTimeMillis(),
-                    name = path.substringAfterLast("/"),
+                    name = path.substringAfterLast("/").substringBefore("?"),
                     path = path,
                     lastOpened = System.currentTimeMillis(),
                     polygonCount = 0
@@ -169,8 +218,13 @@ class MainActivity : AppCompatActivity() {
                     enterPreviewMode()
                 }
             } catch (e: Exception) {
+                e.printStackTrace()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "加载失败: ${e.message}", Toast.LENGTH_LONG).show()
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("加载失败")
+                        .setMessage("错误: ${e.message}\n\n请确保选择有效的GLB/GLTF文件")
+                        .setPositiveButton("确定", null)
+                        .show()
                 }
             }
         }
@@ -191,7 +245,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private suspend fun showModelOptions(model: RecentModel) {
-        val popup = PopupMenu(this, recyclerView.findViewWithTag<View>(model.id))
+        val popup = PopupMenu(this, recyclerView.findViewWithTag<View>(model.id) ?: return)
         popup.menuInflater.inflate(R.menu.model_options, popup.menu)
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
@@ -213,26 +267,42 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun shareModel(model: RecentModel) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "*/*"
-            putExtra(Intent.EXTRA_STREAM, Uri.parse(model.path))
+        try {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "*/*"
+                putExtra(Intent.EXTRA_STREAM, Uri.parse(model.path))
+            }
+            startActivity(Intent.createChooser(intent, "分享模型"))
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-        startActivity(Intent.createChooser(intent, "分享模型"))
     }
     
     override fun onResume() {
         super.onResume()
-        renderer.onResume()
+        try {
+            renderer.onResume()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
     
     override fun onPause() {
         super.onPause()
-        renderer.onPause()
+        try {
+            renderer.onPause()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
     
     override fun onDestroy() {
         super.onDestroy()
-        renderer.destroy()
+        try {
+            renderer.destroy()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
-
