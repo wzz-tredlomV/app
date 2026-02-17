@@ -1,6 +1,8 @@
 package com.example.model3dviewer.renderer
 
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.view.Choreographer
 import android.view.Surface
 import android.view.SurfaceView
@@ -133,18 +135,19 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
             return false
         }
         
-        // 检查文件格式
-        val lowerPath = filePath.lowercase()
-        if (!lowerPath.endsWith(".glb") && !lowerPath.endsWith(".gltf")) {
-            isLoading.set(false)
-            throw IllegalArgumentException("不支持的文件格式，仅支持 .glb 或 .gltf")
-        }
-        
         return try {
             withContext(Dispatchers.IO) {
                 val fileSize = getFileSize(filePath)
+                if (fileSize == 0L) {
+                    throw IllegalArgumentException("无法读取文件或文件为空")
+                }
                 if (fileSize > MAX_FILE_SIZE) {
                     throw IllegalArgumentException("文件过大: ${fileSize / 1024 / 1024}MB, 最大支持${MAX_FILE_SIZE / 1024 / 1024}MB")
+                }
+                
+                // 验证文件格式
+                if (!isValidModelFile(filePath)) {
+                    throw IllegalArgumentException("不支持的文件格式，仅支持 .glb 或 .gltf")
                 }
                 
                 // 在主线程清理当前资源
@@ -158,15 +161,22 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                     readLargeFile(filePath, onProgress)
                 } else {
                     readSmallFile(filePath)?.also { onProgress(30) }
-                }
+                } ?: throw IllegalArgumentException("无法读取文件内容")
                 
                 onProgress(60)
                 
-                buffer ?: return@withContext false
+                // 验证 GLB 文件头（如果是 GLB 格式）
+                if (isProbablyGlbFile(filePath) && !isValidGlbHeader(buffer)) {
+                    throw IllegalArgumentException("无效的 GLB 文件格式")
+                }
                 
                 val asset = withTimeoutOrNull(LOAD_TIMEOUT) {
                     assetLoader.createAsset(buffer)
                 } ?: throw IllegalStateException("创建资源超时")
+                
+                if (asset == null) {
+                    throw IllegalStateException("无法解析模型文件，请确保是有效的 GLB/GLTF 格式")
+                }
                 
                 onProgress(80)
                 
@@ -186,6 +196,109 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         }
     }
     
+    /**
+     * 验证文件是否为支持的 3D 模型格式
+     */
+    private fun isValidModelFile(path: String): Boolean {
+        return try {
+            val uri = Uri.parse(path)
+            
+            // 1. 尝试从 ContentResolver 获取 MIME 类型
+            val mimeType = context.contentResolver.getType(uri)
+            android.util.Log.d("FilamentRenderer", "File MIME type: $mimeType")
+            
+            if (mimeType != null) {
+                when {
+                    mimeType.contains("gltf") || 
+                    mimeType.contains("glb") ||
+                    mimeType == "application/octet-stream" ||
+                    mimeType == "model/gltf-binary" ||
+                    mimeType == "model/gltf+json" -> return true
+                }
+            }
+            
+            // 2. 从文件名检查扩展名
+            val fileName = getFileNameFromUri(uri)?.lowercase() ?: ""
+            android.util.Log.d("FilamentRenderer", "File name: $fileName")
+            
+            if (fileName.endsWith(".glb") || fileName.endsWith(".gltf")) {
+                return true
+            }
+            
+            // 3. 如果无法确定，放行让后续验证处理（可能是从流中获取的文件）
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("FilamentRenderer", "Cannot validate file format", e)
+            true // 出错时放行
+        }
+    }
+    
+    /**
+     * 判断文件可能是 GLB 格式（用于决定是否需要验证 GLB 头）
+     */
+    private fun isProbablyGlbFile(path: String): Boolean {
+        val fileName = getFileNameFromUri(Uri.parse(path))?.lowercase() ?: ""
+        return fileName.endsWith(".glb")
+    }
+    
+    /**
+     * 从 URI 获取文件名
+     */
+    private fun getFileNameFromUri(uri: Uri): String? {
+        return try {
+            // 尝试从 URI 路径获取
+            uri.path?.let { path ->
+                val decodedPath = java.net.URLDecoder.decode(path, "UTF-8")
+                val lastSegment = decodedPath.substringAfterLast('/')
+                if (lastSegment.isNotEmpty() && !lastSegment.contains(":")) {
+                    return lastSegment
+                }
+            }
+            
+            // 尝试通过 ContentResolver 查询 DISPLAY_NAME
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (displayNameIndex != -1) {
+                        return cursor.getString(displayNameIndex)
+                    }
+                }
+            }
+            
+            // 备用：使用 lastPathSegment
+            uri.lastPathSegment?.let { 
+                java.net.URLDecoder.decode(it, "UTF-8")
+            }
+        } catch (e: Exception) {
+            uri.lastPathSegment
+        }
+    }
+    
+    /**
+     * 验证 GLB 文件头魔数
+     * GLB 文件以 0x46546C67 ("glTF") 开头
+     */
+    private fun isValidGlbHeader(buffer: Buffer): Boolean {
+        return try {
+            if (buffer is ByteBuffer && buffer.remaining() >= 4) {
+                // 保存当前位置
+                val originalPosition = buffer.position()
+                
+                buffer.position(0)
+                val magic = buffer.getInt()
+                
+                // 恢复位置
+                buffer.position(originalPosition)
+                
+                magic == 0x46546C67 // "glTF" in little-endian
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
     private suspend fun clearCurrentAsset() {
         filamentAsset.getAndSet(null)?.let { asset ->
             scene.removeEntities(asset.entities)
@@ -197,7 +310,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     
     private fun getFileSize(path: String): Long {
         return try {
-            val uri = android.net.Uri.parse(path)
+            val uri = Uri.parse(path)
             context.contentResolver.openFileDescriptor(uri, "r")?.use {
                 it.statSize
             } ?: 0L
@@ -208,7 +321,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     
     private fun readSmallFile(path: String): Buffer? {
         return try {
-            val uri = android.net.Uri.parse(path)
+            val uri = Uri.parse(path)
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 val bytes = stream.readBytes()
                 if (bytes.isEmpty()) return null
@@ -227,7 +340,7 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     
     private fun readLargeFile(path: String, onProgress: (Int) -> Unit): Buffer? {
         return try {
-            val uri = android.net.Uri.parse(path)
+            val uri = Uri.parse(path)
             
             context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
                 FileInputStream(pfd.fileDescriptor).use { fis ->
@@ -248,7 +361,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                         val remaining = fileSize - position
                         val size = minOf(chunkSize, remaining).toInt()
                         
-                        // 使用普通读取而非内存映射，避免内存泄漏
                         val bytes = ByteArray(size)
                         val tempBuffer = ByteBuffer.wrap(bytes)
                         channel.read(tempBuffer)
@@ -276,12 +388,10 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     
     private suspend fun loadResourcesWithTimeout(asset: FilamentAsset, onProgress: (Int) -> Unit) {
         withTimeoutOrNull(LOAD_TIMEOUT) {
-            // 在 IO 线程加载资源
             withContext(Dispatchers.IO) {
                 resourceLoader.loadResources(asset)
             }
             
-            // 在主线程操作场景和相机
             withContext(Dispatchers.Main) {
                 onProgress(90)
                 scene.addEntities(asset.entities)
@@ -290,7 +400,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                 val halfExtent = box.halfExtent
                 val size = maxOf(halfExtent[0], halfExtent[1], halfExtent[2]) * 2.0f
                 
-                // 直接计算相机位置，避免调用 updateCamera 导致的线程问题
                 val distance = size * 1.5f
                 val rotX = rotationX * Math.PI / 180.0
                 val rotY = rotationY * Math.PI / 180.0
@@ -323,7 +432,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
     }
     
     private fun render(frameTimeNanos: Long) {
-        // 安全获取实例
         val instance = filamentInstance.get() ?: return
         
         try {
@@ -337,7 +445,6 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
                 }
             }
         } catch (e: Exception) {
-            // 动画错误不应导致崩溃
         }
         
         swapChain?.let { sc ->
@@ -373,4 +480,3 @@ class FilamentRenderer(private val context: Context, private val surfaceView: Su
         }
     }
 }
-
