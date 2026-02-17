@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import android.view.*
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,15 +46,21 @@ class MainActivity : AppCompatActivity() {
     
     companion object {
         const val GRID_SPAN_COUNT = 3
+        const val TAG = "MainActivity"
     }
 
     private val pickModelLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        Log.d(TAG, "Selected URI: $uri")
+        Log.d(TAG, "URI Path: ${uri?.path}")
+        Log.d(TAG, "URI Scheme: ${uri?.scheme}")
+        
         uri?.let { 
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
             try {
                 contentResolver.takePersistableUriPermission(it, flags)
                 loadModel(it.toString())
             } catch (e: SecurityException) {
+                Log.e(TAG, "Permission denied", e)
                 Toast.makeText(this, "无法获取文件权限", Toast.LENGTH_LONG).show()
             }
         }
@@ -79,7 +86,10 @@ class MainActivity : AppCompatActivity() {
         
         recyclerView.layoutManager = GridLayoutManager(this, GRID_SPAN_COUNT)
         adapter = ModelThumbnailAdapter(
-            onItemClick = { model -> loadModel(model.path) },
+            onItemClick = { model -> 
+                Log.d(TAG, "Loading from recent: ${model.path}")
+                loadModel(model.path) 
+            },
             onItemLongClick = { model, view -> 
                 showModelOptions(model, view)
                 true
@@ -107,6 +117,7 @@ class MainActivity : AppCompatActivity() {
         try {
             renderer = FilamentRenderer(this, surfaceView)
         } catch (e: Exception) {
+            Log.e(TAG, "Renderer init failed", e)
             Toast.makeText(this, "初始化渲染器失败: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
         }
@@ -177,18 +188,19 @@ class MainActivity : AppCompatActivity() {
                 "*/*"
             ))
         } catch (e: Exception) {
+            Log.e(TAG, "File picker failed", e)
             Toast.makeText(this, "无法打开文件选择器: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
     
     private fun loadModel(path: String) {
+        Log.d(TAG, "loadModel called with path: $path")
         cancelLoad()
         showProgress()
         
         loadJob = lifecycleScope.launch {
             val startTime = SystemClock.elapsedRealtime()
             
-            // 使用 runCatching 改进错误处理
             val result = runCatching {
                 renderer.loadModel(path) { progress ->
                     launch(Dispatchers.Main) {
@@ -214,10 +226,14 @@ class MainActivity : AppCompatActivity() {
                     enterPreviewMode()
                 }
                 else -> {
-                    val errorMsg = result.exceptionOrNull()?.message ?: "未知错误"
+                    val exception = result.exceptionOrNull()
+                    val errorMsg = exception?.message ?: "未知错误"
+                    
+                    Log.e(TAG, "Load failed: $errorMsg", exception)
+                    
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle("加载失败")
-                        .setMessage("无法加载模型: $errorMsg")
+                        .setMessage("无法加载模型: $errorMsg\n\n路径: $path")
                         .setPositiveButton("确定", null)
                         .show()
                 }
@@ -341,4 +357,3 @@ class MainActivity : AppCompatActivity() {
         renderer.destroy()
     }
 }
-
